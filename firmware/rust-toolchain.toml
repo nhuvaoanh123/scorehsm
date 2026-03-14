@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly"
+targets = ["thumbv8m.main-none-eabihf"]
+components = ["rust-src", "rustfmt", "clippy"]

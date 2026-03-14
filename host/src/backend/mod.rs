@@ -15,6 +15,9 @@ pub trait HsmBackend: Send + Sync {
     /// Initialize the backend.
     fn init(&mut self) -> HsmResult<()>;
 
+    /// Deinitialize the backend and release resources.
+    fn deinit(&mut self) -> HsmResult<()>;
+
     /// Generate a new key of the given type. Returns an opaque handle.
     fn key_generate(&mut self, key_type: KeyType) -> HsmResult<KeyHandle>;
 
@@ -66,10 +69,13 @@ pub trait HsmBackend: Send + Sync {
     ) -> HsmResult<bool>;
 
     /// HKDF-SHA256 key derivation. Derives a new key slot from an existing one.
-    fn hkdf_derive(
+    fn key_derive(
         &mut self,
         base: KeyHandle,
         info: &[u8],
         out_type: KeyType,
     ) -> HsmResult<KeyHandle>;
+
+    /// ECDH P-256 key agreement. Returns the shared secret (32 bytes).
+    fn ecdh_agree(&self, handle: KeyHandle, peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]>;
 }

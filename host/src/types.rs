@@ -3,7 +3,7 @@
 /// Opaque key handle. Value 0 is reserved/invalid.
 /// Key material never leaves the HSM — callers only hold handles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct KeyHandle(pub(crate) u32);
+pub struct KeyHandle(pub u32);
 
 impl KeyHandle {
     /// The invalid/uninitialized handle value.
