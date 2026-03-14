@@ -3,4 +3,5 @@ members = [
     "host",
     # firmware is a separate embedded crate with its own toolchain — not in workspace
 ]
+exclude = ["firmware"]
 resolver = "2"
