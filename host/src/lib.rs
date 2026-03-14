@@ -16,6 +16,10 @@ pub mod types;
 pub mod ids;
 pub mod session;
 
+pub mod update;
+pub mod onboard_comm;
+pub mod feature_activation;
+
 #[cfg(feature = "certs")]
 pub mod cert;
 

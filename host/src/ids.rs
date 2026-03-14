@@ -51,6 +51,16 @@ pub enum IdsEvent {
         /// The unrecognised handle value.
         handle: KeyHandle,
     },
+    /// A firmware update image was rejected — bad signature or version rollback.
+    UpdateRejected {
+        /// Human-readable reason string.
+        reason: &'static str,
+    },
+    /// A feature activation token was rejected — bad signature or counter replay.
+    ActivationRejected {
+        /// Human-readable reason string.
+        reason: &'static str,
+    },
 }
 
 /// Implementors receive IDS events from `HsmSession`.

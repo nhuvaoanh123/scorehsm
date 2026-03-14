@@ -48,6 +48,22 @@ pub enum Algorithm {
     MlKem,
 }
 
+/// Secure boot status reported by `HsmBackend::boot_status()` — HSM-REQ-046.
+///
+/// The software backend returns a synthetic "not applicable" value.
+/// The hardware backend queries the firmware for the boot verification result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BootStatus {
+    /// `true` if the firmware image was verified against the OTP public key at reset.
+    ///
+    /// `false` for the software backend (no secure boot hardware).
+    pub verified: bool,
+    /// Monotonic firmware version counter embedded in the image header.
+    ///
+    /// Zero for the software backend.
+    pub firmware_version: u32,
+}
+
 /// AES-GCM operation parameters.
 pub struct AesGcmParams<'a> {
     /// 96-bit IV / nonce.

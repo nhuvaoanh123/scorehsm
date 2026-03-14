@@ -3,7 +3,7 @@
 Date: 2026-03-14
 Status: COMPLETE
 Backbone: Eclipse SCORE feat_req__sec_crypt__* (43 requirements)
-Extensions: threat model security goals SG-01 to SG-10
+Extensions: threat model security goals SG-01 to SG-10; stkh_req__dependability__security_features gap analysis
 
 Traceability convention:
   HSM-REQ-NNN maps to SCORE ID feat_req__sec_crypt__<name>
@@ -290,6 +290,62 @@ without the `hw-backend` feature, noting that key isolation is not enforced.
 
 ---
 
+## 13. Platform Security Requirements (stkh_req__dependability__security_features)
+
+SCORE stakeholder requirement `stkh_req__dependability__security_features` lists ten platform
+security capabilities. The sub-items below are mapped to our HSM-REQ set; gaps are filled
+with new requirements HSM-REQ-046 through HSM-REQ-049. Platform-level items outside the
+HSM library boundary are noted explicitly.
+
+| stkh sub-item | Scope | Covered by |
+|---|---|---|
+| Mandatory access control | HSM library | HSM-REQ-037 |
+| Secure boot | Firmware | HSM-REQ-046 (new) |
+| Secure onboard communication | HSM library | HSM-REQ-040 (TLS), HSM-REQ-048 (IPSec/MACSec, new) |
+| IPSec and MACSec | HSM library | HSM-REQ-048 (new) |
+| Firewall | Platform (OS) | Out of scope — Linux netfilter / AUTOSAR firewall |
+| Certificate installation and storage in HSM or ARM TrustZone | HSM library | HSM-REQ-018, HSM-REQ-021 |
+| Kernel hardening (ASLR, pointer obfuscation) | Platform (OS) | Out of scope — kernel/bootloader config |
+| Identity and Access Management | HSM library | HSM-REQ-037 (handle-scoped sessions) |
+| Secure Feature Activation | HSM library | HSM-REQ-049 (new) |
+| Secure software update | Firmware | HSM-REQ-047 (new) |
+
+### HSM-REQ-046 — Secure boot
+**SCORE:** stkh_req__dependability__security_features (Secure boot sub-item)
+The STM32L552 firmware shall verify its own image signature at reset before executing
+application code. The verification public key shall be provisioned into OTP (option bytes)
+during manufacturing. Images failing verification shall halt the boot sequence and assert
+a diagnostic fault signal. The HSM library shall expose the boot verification result via
+a `boot_status()` query so the host can confirm secure boot succeeded before issuing
+cryptographic operations.
+
+### HSM-REQ-047 — Secure software update
+**SCORE:** stkh_req__dependability__security_features (Secure software update sub-item)
+The firmware shall verify firmware update images against a code-signing certificate
+before applying them. The code-signing certificate shall be provisioned via
+HSM-REQ-018 (certificate management). Rollback to a version with a lower monotonic
+version counter shall be rejected. Failed update verification shall emit an
+`IdsEvent::UpdateRejected` event (HSM-REQ-038).
+
+### HSM-REQ-048 — IPSec / MACSec key material provisioning
+**SCORE:** stkh_req__dependability__security_features (Secure onboard communication,
+IPSec and MACSec sub-items)
+The HSM shall provide key generation, ECDH key agreement, and HMAC operations
+required by IPSec IKEv2 and MACSec Key Agreement (MKA) protocol stacks.
+The protocol stack implementation itself is a platform concern outside the HSM
+library boundary. The HSM API shall not expose raw session keys; key handles shall
+be passed to the stack which invokes the HSM for each cryptographic operation.
+
+### HSM-REQ-049 — Secure feature activation
+**SCORE:** stkh_req__dependability__security_features (Secure Feature Activation sub-item)
+The security component shall provide a `feature_activate(token: &[u8]) -> HsmResult<()>`
+operation that verifies a signed activation token against the provisioned feature-authority
+certificate (stored via HSM-REQ-018) and sets the corresponding feature flag in
+authenticated non-volatile storage. Tokens shall include a monotonic counter to prevent
+replay. Invalid or replayed tokens shall emit `IdsEvent::ActivationRejected`.
+
+---
+
 ## Traceability Summary
 
 | HSM-REQ | SCORE req ID | Status |
@@ -339,6 +395,11 @@ without the `hw-backend` feature, noting that key isolation is not enforced.
 | HSM-REQ-043 | — (new, SG-05) | New — threat model |
 | HSM-REQ-044 | — (new, SG-07) | New — threat model |
 | HSM-REQ-045 | — (new, SG-08) | New — threat model |
+| HSM-REQ-046 | stkh_req__dependability__security_features (secure boot) | New — stakeholder req |
+| HSM-REQ-047 | stkh_req__dependability__security_features (secure update) | New — stakeholder req |
+| HSM-REQ-048 | stkh_req__dependability__security_features (IPSec/MACSec) | New — stakeholder req |
+| HSM-REQ-049 | stkh_req__dependability__security_features (feature activation) | New — stakeholder req |
 
-**Total: 45 requirements (43 SCORE-derived + 2 new from threat model)**
-**SCORE coverage: 43/43 (100%)**
+**Total: 49 requirements (43 SCORE feat_req-derived + 3 from threat model + 4 from stkh_req gap analysis)**
+**feat_req__sec_crypt__ coverage: 43/43 (100%)**
+**stkh_req__dependability__security_features coverage: 10/10 sub-items addressed (6 by existing reqs, 4 new reqs, 2 noted as platform out-of-scope)**

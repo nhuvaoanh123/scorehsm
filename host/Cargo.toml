@@ -48,3 +48,16 @@ certs        = ["x509-cert"]
 hex      = "0.4"
 proptest = "1"
 digest   = { version = "0.10", features = ["core-api"] }
+# Re-exported for integration test signing helpers
+p256     = { version = "0.13", features = ["ecdsa", "ecdh", "pkcs8"] }
+sha2     = { version = "0.10" }
+# Certificate test generation
+rcgen    = { version = "0.13", features = ["pem"] }
+
+[[test]]
+name = "cert_tests"
+required-features = ["certs"]
+
+[[test]]
+name = "pqc_tests"
+required-features = ["pqc"]

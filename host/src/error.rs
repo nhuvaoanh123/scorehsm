@@ -36,6 +36,10 @@ pub enum HsmError {
     /// Operation not supported by the active backend.
     #[error("operation not supported by this backend")]
     Unsupported,
+
+    /// Monotonic counter replay detected — token already consumed.
+    #[error("replay detected: counter {0} not greater than last seen {1}")]
+    ReplayDetected(u64, u64),
 }
 
 /// Convenience result alias.

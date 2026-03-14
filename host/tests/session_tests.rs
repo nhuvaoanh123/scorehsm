@@ -4,8 +4,8 @@
 //! handle ownership enforcement, rate-limit counters, and IDS event emission.
 
 use scorehsm_host::{
-    backend::{sw::SoftwareBackend, HsmBackend},
-    ids::{IdsEvent, IdsHook, NullIds},
+    backend::sw::SoftwareBackend,
+    ids::{IdsEvent, IdsHook},
     session::{HsmSession, OpLimit, RateLimits},
     types::KeyType,
 };
@@ -140,4 +140,205 @@ fn test_rate_limit_sign_exceeded() {
     assert!(s.ecdsa_sign(h, &digest).is_ok()); // 2nd — ok
     let result = s.ecdsa_sign(h, &digest);     // 3rd — should fail
     assert!(matches!(result, Err(HsmError::UsbError(_))));
+}
+
+// ── Additional IDS event tests ─────────────────────────────────────────────
+
+/// A failed AES-GCM decrypt emits DecryptFailed.
+#[test]
+fn test_ids_decrypt_failed_event() {
+    let recorder = RecordingIds::default();
+    let b = SoftwareBackend::new();
+    let mut s = HsmSession::new(b)
+        .with_ids_hook(Box::new(recorder.clone()));
+    s.init().unwrap();
+
+    let h = s.key_generate(KeyType::Aes256).unwrap();
+    let iv = [0u8; 12];
+    let params = scorehsm_host::types::AesGcmParams { iv: &iv, aad: b"" };
+    let (ct, mut tag) = s.aes_gcm_encrypt(h, &params, b"secret").unwrap();
+    tag[0] ^= 0xff;  // corrupt the tag
+
+    let result = s.aes_gcm_decrypt(h, &params, &ct, &tag);
+    assert!(result.is_err(), "corrupted tag must be rejected");
+    assert!(
+        recorder.events().iter().any(|e| e.contains("DecryptFailed")),
+        "DecryptFailed IDS event must be emitted"
+    );
+}
+
+/// Ten consecutive decrypt failures trigger a RepeatedFailure event.
+#[test]
+fn test_ids_repeated_failure_event() {
+    let recorder = RecordingIds::default();
+    let b = SoftwareBackend::new();
+    let mut s = HsmSession::new(b)
+        .with_ids_hook(Box::new(recorder.clone()));
+    s.init().unwrap();
+
+    let h = s.key_generate(KeyType::Aes256).unwrap();
+    let iv = [0u8; 12];
+    let params = scorehsm_host::types::AesGcmParams { iv: &iv, aad: b"" };
+    let (ct, _good_tag) = s.aes_gcm_encrypt(h, &params, b"data").unwrap();
+    let bad_tag = [0xffu8; 16];
+
+    for _ in 0..10 {
+        let _ = s.aes_gcm_decrypt(h, &params, &ct, &bad_tag);
+    }
+    assert!(
+        recorder.events().iter().any(|e| e.contains("RepeatedFailure")),
+        "RepeatedFailure must be emitted after 10 consecutive failures"
+    );
+}
+
+/// Exceeding the sign rate limit emits a RateLimitExceeded event.
+#[test]
+fn test_ids_rate_limit_event() {
+    let recorder = RecordingIds::default();
+    let b = SoftwareBackend::new();
+    let limits = RateLimits {
+        sign:    OpLimit::new(1, 60),
+        decrypt: OpLimit::new(100, 60),
+        random:  OpLimit::new(100, 60),
+        derive:  OpLimit::new(100, 60),
+    };
+    let mut s = HsmSession::new(b)
+        .with_ids_hook(Box::new(recorder.clone()))
+        .with_rate_limits(limits);
+    s.init().unwrap();
+    let h = s.key_generate(KeyType::EccP256).unwrap();
+    let digest = s.sha256(b"msg").unwrap();
+
+    let _ = s.ecdsa_sign(h, &digest); // 1st — ok
+    let _ = s.ecdsa_sign(h, &digest); // 2nd — triggers rate limit
+    assert!(
+        recorder.events().iter().any(|e| e.contains("RateLimitExceeded")),
+        "RateLimitExceeded event must be emitted"
+    );
+}
+
+/// Using a foreign handle emits an UnknownHandle event.
+#[test]
+fn test_ids_unknown_handle_event() {
+    use scorehsm_host::types::KeyHandle;
+    let recorder = RecordingIds::default();
+    let b = SoftwareBackend::new();
+    let mut s = HsmSession::new(b)
+        .with_ids_hook(Box::new(recorder.clone()));
+    s.init().unwrap();
+
+    let _ = s.hmac_sha256(KeyHandle(0xCAFE), b"data");
+    assert!(
+        recorder.events().iter().any(|e| e.contains("UnknownHandle")),
+        "UnknownHandle event must be emitted for foreign handle"
+    );
+}
+
+/// After deinit(), previously owned handles are no longer valid.
+#[test]
+fn test_session_deinit_invalidates_handles() {
+    use scorehsm_host::error::HsmError;
+    let mut s = make_session();
+    let h = s.key_generate(KeyType::HmacSha256).unwrap();
+    s.deinit().unwrap();
+    let result = s.hmac_sha256(h, b"data");
+    assert!(matches!(result, Err(HsmError::InvalidKeyHandle)));
+}
+
+// ── Additional rate limit tests ────────────────────────────────────────────
+
+/// Exceeding the decrypt rate limit returns an error.
+#[test]
+fn test_rate_limit_decrypt_exceeded() {
+    use scorehsm_host::error::HsmError;
+    let b = SoftwareBackend::new();
+    let limits = RateLimits {
+        sign:    OpLimit::new(100, 60),
+        decrypt: OpLimit::new(2, 60),
+        random:  OpLimit::new(100, 60),
+        derive:  OpLimit::new(100, 60),
+    };
+    let mut s = HsmSession::new(b)
+        .with_rate_limits(limits);
+    s.init().unwrap();
+
+    let h = s.key_generate(KeyType::Aes256).unwrap();
+    let iv = [0u8; 12];
+    let params = scorehsm_host::types::AesGcmParams { iv: &iv, aad: b"" };
+    let (ct, tag) = s.aes_gcm_encrypt(h, &params, b"plaintext").unwrap();
+
+    assert!(s.aes_gcm_decrypt(h, &params, &ct, &tag).is_ok()); // 1st
+    assert!(s.aes_gcm_decrypt(h, &params, &ct, &tag).is_ok()); // 2nd
+    let result = s.aes_gcm_decrypt(h, &params, &ct, &tag);     // 3rd — limit
+    assert!(matches!(result, Err(HsmError::UsbError(_))));
+}
+
+/// Exceeding the random rate limit returns an error.
+#[test]
+fn test_rate_limit_random_exceeded() {
+    use scorehsm_host::error::HsmError;
+    let b = SoftwareBackend::new();
+    let limits = RateLimits {
+        sign:    OpLimit::new(100, 60),
+        decrypt: OpLimit::new(100, 60),
+        random:  OpLimit::new(2, 60),
+        derive:  OpLimit::new(100, 60),
+    };
+    let mut s = HsmSession::new(b)
+        .with_rate_limits(limits);
+    s.init().unwrap();
+
+    let mut buf = [0u8; 8];
+    assert!(s.random(&mut buf).is_ok()); // 1st
+    assert!(s.random(&mut buf).is_ok()); // 2nd
+    let result = s.random(&mut buf);     // 3rd — limit
+    assert!(matches!(result, Err(HsmError::UsbError(_))));
+}
+
+/// Exceeding the derive rate limit returns an error.
+#[test]
+fn test_rate_limit_derive_exceeded() {
+    use scorehsm_host::error::HsmError;
+    let b = SoftwareBackend::new();
+    let limits = RateLimits {
+        sign:    OpLimit::new(100, 60),
+        decrypt: OpLimit::new(100, 60),
+        random:  OpLimit::new(100, 60),
+        derive:  OpLimit::new(1, 60),
+    };
+    let mut s = HsmSession::new(b)
+        .with_rate_limits(limits);
+    s.init().unwrap();
+
+    let base = s.key_generate(KeyType::HmacSha256).unwrap();
+    assert!(s.key_derive(base, b"label1", KeyType::HmacSha256).is_ok()); // 1st
+    let result = s.key_derive(base, b"label2", KeyType::HmacSha256);      // 2nd — limit
+    assert!(matches!(result, Err(HsmError::UsbError(_))));
+}
+
+/// Rate limit counter resets after the window expires.
+#[test]
+fn test_rate_limit_window_resets_after_expiry() {
+    use scorehsm_host::error::HsmError;
+    use std::{thread, time::Duration};
+    let b = SoftwareBackend::new();
+    let limits = RateLimits {
+        sign:    OpLimit { max_count: 1, window: Duration::from_millis(50) },
+        decrypt: OpLimit::new(100, 60),
+        random:  OpLimit::new(100, 60),
+        derive:  OpLimit::new(100, 60),
+    };
+    let mut s = HsmSession::new(b)
+        .with_rate_limits(limits);
+    s.init().unwrap();
+    let h = s.key_generate(KeyType::EccP256).unwrap();
+    let digest = s.sha256(b"x").unwrap();
+
+    assert!(s.ecdsa_sign(h, &digest).is_ok());  // 1st — ok
+    let r = s.ecdsa_sign(h, &digest);            // 2nd — rate limited
+    assert!(matches!(r, Err(HsmError::UsbError(_))));
+
+    thread::sleep(Duration::from_millis(100));   // wait for window to expire
+
+    assert!(s.ecdsa_sign(h, &digest).is_ok(), "window should have reset");
 }

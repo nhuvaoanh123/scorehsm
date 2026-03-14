@@ -1,7 +1,7 @@
 //! Backend abstraction — software fallback and hardware (USB/L55).
 
 use crate::error::HsmResult;
-use crate::types::{AesGcmParams, EcdsaSignature, KeyHandle, KeyType};
+use crate::types::{AesGcmParams, BootStatus, EcdsaSignature, KeyHandle, KeyType};
 
 pub mod sw;
 
@@ -78,4 +78,13 @@ pub trait HsmBackend: Send + Sync {
 
     /// ECDH P-256 key agreement. Returns the shared secret (32 bytes).
     fn ecdh_agree(&self, handle: KeyHandle, peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]>;
+
+    /// Query secure boot status — HSM-REQ-046.
+    ///
+    /// The software backend returns `BootStatus { verified: false, firmware_version: 0 }`
+    /// to indicate that hardware secure boot is not applicable.
+    /// The hardware backend queries the firmware for the actual boot result.
+    fn boot_status(&self) -> HsmResult<BootStatus> {
+        Ok(BootStatus { verified: false, firmware_version: 0 })
+    }
 }

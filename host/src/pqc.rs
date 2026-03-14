@@ -29,7 +29,9 @@ mod pqc_impl {
 
     /// ML-DSA key pair.
     pub struct MlDsaKeyPair {
+        /// Dilithium-3 public key (used for verification).
         pub public_key:  DilithiumPublicKey,
+        /// Dilithium-3 secret key (used for signing).
         pub secret_key:  DilithiumSecretKey,
     }
 
@@ -69,7 +71,9 @@ mod pqc_impl {
 
     /// ML-KEM key pair.
     pub struct MlKemKeyPair {
+        /// Kyber-768 public key (distributed to senders for encapsulation).
         pub public_key: KyberPublicKey,
+        /// Kyber-768 secret key (used for decapsulation).
         pub secret_key: KyberSecretKey,
     }
 
