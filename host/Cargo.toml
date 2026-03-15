@@ -33,28 +33,28 @@ pqcrypto-dilithium = { version = "0.5", optional = true }
 pqcrypto-kyber     = { version = "0.8", optional = true }
 pqcrypto-traits    = { version = "0.3", optional = true }
 
-# Async (optional, for TLS integration)
-tokio          = { version = "1", features = ["full"], optional = true }
-rustls         = { version = "0.23", optional = true }
-
 [features]
 default      = ["sw-backend"]
 sw-backend   = []
 hw-backend   = []
 mock         = []
 pqc          = ["pqcrypto-dilithium", "pqcrypto-kyber", "pqcrypto-traits"]
-tls          = ["tokio", "rustls"]
 certs        = ["x509-cert"]
 
 [dev-dependencies]
-hex      = "0.4"
-proptest = "1"
-digest   = { version = "0.10", features = ["core-api"] }
+hex       = "0.4"
+proptest  = "1"
+digest    = { version = "0.10", features = ["core-api"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 # Re-exported for integration test signing helpers
-p256     = { version = "0.13", features = ["ecdsa", "ecdh", "pkcs8"] }
-sha2     = { version = "0.10" }
+p256      = { version = "0.13", features = ["ecdsa", "ecdh", "pkcs8"] }
+sha2      = { version = "0.10" }
 # Certificate test generation
-rcgen    = { version = "0.13", features = ["pem"] }
+rcgen     = { version = "0.13", features = ["pem"] }
+
+[[bench]]
+name = "timing"
+harness = false
 
 [[test]]
 name = "cert_tests"
@@ -63,3 +63,7 @@ required-features = ["certs"]
 [[test]]
 name = "pqc_tests"
 required-features = ["pqc"]
+
+[[test]]
+name = "qualification_tests"
+required-features = ["mock"]

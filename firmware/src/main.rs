@@ -18,13 +18,15 @@ use embassy_stm32::{
     peripherals,
     rng::{self, Rng},
     usb_otg::{self, Driver as UsbDriver, Instance},
+    wdg::IndependentWatchdog,
 };
 use embassy_usb::{
     class::cdc_acm::{CdcAcmClass, State},
     Builder, UsbDevice,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use embassy_futures::join::join;
+use embassy_futures::join::join3;
+use embassy_time::Timer;
 use heapless::Vec;
 use rand_core::RngCore;
 use {defmt_rtt as _, panic_probe as _};
@@ -86,6 +88,24 @@ async fn main(spawner: Spawner) {
 
     info!("scorehsm-firmware booting");
 
+    // ── TrustZone: SAU configuration (before any peripheral init) ────────
+    #[cfg(feature = "trustzone")]
+    {
+        // SAFETY: called once at boot, interrupts disabled (cortex-m-rt guarantee),
+        // Secure Privileged mode. SAU regions mark SRAM1+NS-flash as Non-Secure;
+        // SRAM2 (key store) remains Secure and hardware-isolated.
+        unsafe { trustzone::configure_sau(); }
+        if trustzone::verify_tz_active() {
+            info!("TrustZone: SAU active, SRAM2 Secure");
+        } else {
+            error!("TrustZone: SAU enable FAILED — check TZEN option byte");
+        }
+    }
+    #[cfg(not(feature = "trustzone"))]
+    {
+        info!("TrustZone: disabled (non-TZ build)");
+    }
+
     // Initialise hardware RNG
     let rng = Rng::new(p.RNG, Irqs);
 
@@ -126,9 +146,14 @@ async fn main(spawner: Spawner) {
     let class = CdcAcmClass::new(&mut builder, &mut state, 64);
     let usb = builder.build();
 
+    // IWDG: 2s timeout, pet every 500ms from watchdog task
+    let mut wdg = IndependentWatchdog::new(p.IWDG, 2_000_000);
+    wdg.unleash();
+    info!("IWDG active (2s timeout, 500ms pet)");
+
     info!("USB CDC ready");
 
-    join(usb_run(usb), hsm_run(class, rng)).await;
+    join3(usb_run(usb), hsm_run(class, rng), watchdog_run(wdg)).await;
 }
 
 // ── USB device driver task ────────────────────────────────────────────────────
@@ -137,6 +162,16 @@ async fn usb_run<D: embassy_usb::driver::Driver<'static>>(
     mut usb: UsbDevice<'static, D>,
 ) -> ! {
     usb.run().await
+}
+
+// ── Watchdog task ─────────────────────────────────────────────────────────────
+
+async fn watchdog_run<'d>(mut wdg: IndependentWatchdog<'d, peripherals::IWDG>) -> ! {
+    info!("Watchdog task started");
+    loop {
+        wdg.pet();
+        Timer::after_millis(500).await;
+    }
 }
 
 // ── HSM dispatcher task ───────────────────────────────────────────────────────
@@ -149,7 +184,7 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
     let mut tx_buf = [0u8; MAX_FRAME];
     let mut rx_pos: usize = 0;
     let mut initialized = false;
-    let mut expected_seq: u8 = 0x00;
+    let mut expected_seq: u32 = 0x00;
 
     loop {
         // Wait for DTR (host connected)
@@ -231,7 +266,11 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
                         break 'connection;
                     }
 
-                    expected_seq = expected_seq.wrapping_add(1);
+                    if expected_seq == u32::MAX {
+                        warn!("Sequence overflow — re-init required");
+                        break 'connection;
+                    }
+                    expected_seq += 1;
                 }
             }
         }
@@ -244,10 +283,10 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
 
 fn dispatch(
     cmd: Cmd,
-    _seq: u8,
+    _seq: u32,
     payload: &[u8],
     initialized: &mut bool,
-    expected_seq: &mut u8,
+    expected_seq: &mut u32,
     rng: &mut Rng<'_, peripherals::RNG>,
 ) -> (Rsp, heapless::Vec<u8, MAX_PAYLOAD>) {
     let mut out: heapless::Vec<u8, MAX_PAYLOAD> = heapless::Vec::new();
@@ -266,7 +305,7 @@ fn dispatch(
         // ── Init ─────────────────────────────────────────────────────────────
         Cmd::Init => {
             *initialized = true;
-            *expected_seq = 0x01; // next expected after Init at seq=0x00
+            *expected_seq = 0x00; // post-dispatch increment will make this 0x01
             info!("HSM initialised");
             ok!();
         }
@@ -509,10 +548,28 @@ fn dispatch(
             }
         }
 
-        // ── Key import (wrapped — not yet implemented) ────────────────────────
+        // ── Key import (plaintext — standalone showcase) ─────────────────────
+        // Future: KEK-wrapped import for production use.
         Cmd::KeyImport => {
-            // Future: AES-GCM-wrapped key import with a KEK
-            err!(Rsp::ErrUnknownCmd);
+            // Payload: [key_type:1][key_len:2LE][key_bytes:key_len]
+            if payload.len() < 3 { err!(Rsp::ErrBadParam); }
+            let kt = match KeyType::try_from(payload[0]) {
+                Ok(t) => t,
+                Err(_) => err!(Rsp::ErrBadParam),
+            };
+            let key_len = u16::from_le_bytes([payload[1], payload[2]]) as usize;
+            if payload.len() < 3 + key_len { err!(Rsp::ErrBadParam); }
+            // All key types currently require exactly 32 bytes
+            if key_len != 32 { err!(Rsp::ErrBadParam); }
+            let key_bytes = &payload[3..3 + key_len];
+            match ks.store(kt, key_bytes) {
+                None => err!(Rsp::ErrCrypto), // store full
+                Some(handle) => {
+                    out.extend_from_slice(&handle.0.to_le_bytes()).ok();
+                    info!("KeyImport: type={} handle={}", payload[0], handle.0);
+                    return (Rsp::KeyHandle, out);
+                }
+            }
         }
     }
 }

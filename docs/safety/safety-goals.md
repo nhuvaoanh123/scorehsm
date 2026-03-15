@@ -171,7 +171,7 @@ The threat model (`threat-model.md`) defines Security Goals (cybersecurity goals
 | SG-01 (no false verification) | I1 (no key export), T1 (frame integrity) | Security enforces correct MAC/sig via key confinement and frame integrity |
 | SG-03 (no key disclosure) | I1 (no key export command) | Security = no API; Safety = no leakage via any path |
 | SG-04 (nonce uniqueness) | S2 (replay protection via sequence numbers) | Related but distinct: sequence numbers protect frames; nonce uniqueness protects AEAD data |
-| SG-05 (transport fault) | T1 (CRC-16 + AES-GCM tag) | CRC is both a security integrity measure and a safety diagnostic |
+| SG-05 (transport fault) | T1 (CRC-32/MPEG-2 + AES-GCM tag) | CRC is both a security integrity measure and a safety diagnostic |
 | SG-06 (safe state) | D3 (disconnect handling) | Security: return error. Safety: additionally invalidate all sessions and refuse further ops |
 
 Where a mechanism serves both a safety goal and a security goal, the stricter requirement governs. Both safety and security verification evidence is required.

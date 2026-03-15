@@ -262,8 +262,8 @@ Private key operations (ECDSA sign) shall be delegated to the HSM backend.
 
 ### HSM-REQ-041 — USB frame integrity
 **SCORE:** — (SG-02)
-Every USB command and response frame shall include a CRC-16 and a monotonic
-sequence number. The receiver shall reject frames with invalid CRC or
+Every USB command and response frame shall include a CRC-32/MPEG-2 checksum and a
+monotonic u32 sequence number. The receiver shall reject frames with invalid CRC or
 out-of-order sequence numbers.
 
 ### HSM-REQ-042 — Device verification

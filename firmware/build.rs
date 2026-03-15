@@ -1,10 +1,18 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    // Place memory.x where the linker can find it
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
-    fs::copy("memory.x", out.join("memory.x")).unwrap();
+
+    // Select linker script: Secure alias when TrustZone enabled, NS alias otherwise
+    let memory_file = if env::var("CARGO_FEATURE_TRUSTZONE").is_ok() {
+        "memory-tz.x"
+    } else {
+        "memory.x"
+    };
+
+    fs::copy(memory_file, out.join("memory.x")).unwrap();
     println!("cargo:rustc-link-search={}", out.display());
     println!("cargo:rerun-if-changed=memory.x");
+    println!("cargo:rerun-if-changed=memory-tz.x");
     println!("cargo:rerun-if-changed=build.rs");
 }

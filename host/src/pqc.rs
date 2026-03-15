@@ -11,34 +11,36 @@ pub use pqc_impl::*;
 
 #[cfg(feature = "pqc")]
 mod pqc_impl {
+    use crate::error::{HsmError, HsmResult};
     use pqcrypto_dilithium::dilithium3::{
-        self, PublicKey as DilithiumPublicKey, SecretKey as DilithiumSecretKey,
-        SignedMessage,
+        self, PublicKey as DilithiumPublicKey, SecretKey as DilithiumSecretKey, SignedMessage,
     };
     use pqcrypto_kyber::kyber768::{
-        self, PublicKey as KyberPublicKey, SecretKey as KyberSecretKey,
-        Ciphertext as KyberCiphertext,
+        self, Ciphertext as KyberCiphertext, PublicKey as KyberPublicKey,
+        SecretKey as KyberSecretKey,
     };
     use pqcrypto_traits::{
-        sign::SignedMessage as _,
         kem::{Ciphertext as _, SharedSecret as _},
+        sign::SignedMessage as _,
     };
-    use crate::error::{HsmError, HsmResult};
 
     // ── ML-DSA (Dilithium-3) ─────────────────────────────────────────────────
 
     /// ML-DSA key pair.
     pub struct MlDsaKeyPair {
         /// Dilithium-3 public key (used for verification).
-        pub public_key:  DilithiumPublicKey,
+        pub public_key: DilithiumPublicKey,
         /// Dilithium-3 secret key (used for signing).
-        pub secret_key:  DilithiumSecretKey,
+        pub secret_key: DilithiumSecretKey,
     }
 
     /// Generate a fresh ML-DSA (Dilithium-3) key pair.
     pub fn mldsa_keygen() -> MlDsaKeyPair {
         let (pk, sk) = dilithium3::keypair();
-        MlDsaKeyPair { public_key: pk, secret_key: sk }
+        MlDsaKeyPair {
+            public_key: pk,
+            secret_key: sk,
+        }
     }
 
     /// Sign `message` with an ML-DSA secret key. Returns the detached signature.
@@ -80,7 +82,10 @@ mod pqc_impl {
     /// Generate a fresh ML-KEM (Kyber-768) key pair for the recipient.
     pub fn mlkem_keygen() -> MlKemKeyPair {
         let (pk, sk) = kyber768::keypair();
-        MlKemKeyPair { public_key: pk, secret_key: sk }
+        MlKemKeyPair {
+            public_key: pk,
+            secret_key: sk,
+        }
     }
 
     /// Encapsulate: sender generates a ciphertext and shared secret using the

@@ -47,7 +47,6 @@ pub enum HsmError {
     ReplayDetected(u64, u64),
 
     // ── SSR / ISO 26262-6 ASIL B error variants ──────────────────────────────
-
     /// USB frame CRC-32 check failed — frame corrupted or wrong device (HSM-REQ-050).
     #[error("USB frame CRC mismatch — frame rejected")]
     CrcMismatch,

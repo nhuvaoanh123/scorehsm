@@ -147,7 +147,7 @@ All present: `HSM_AES_256_KEY_SIZE` (32), `HSM_AES_GCM_IV_SIZE` (12), `HSM_AES_G
 ```c
 #define HSM_ECDH_SHARED_SECRET_SIZE  (32U)
 #define HSM_ECC_P256_PUBKEY_SIZE     (64U)   /* uncompressed X||Y */
-#define HSM_MAX_KEY_SLOTS            (8U)    /* already defined — verify it matches firmware */
+#define HSM_MAX_KEY_SLOTS            (32U)   /* matches firmware keystore capacity */
 ```
 
 ---

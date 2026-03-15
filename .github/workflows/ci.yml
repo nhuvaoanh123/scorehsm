@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ── Host library: test + clippy + fmt ────────────────────────────────────
+  host-test:
+    name: Test (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "host"
+
+      # Default features (sw-backend)
+      - name: Test (default features)
+        run: cargo test --workspace
+
+      # Mock feature (qualification tests)
+      - name: Test (mock)
+        run: cargo test --workspace --features mock
+
+      # Certs feature
+      - name: Test (certs)
+        run: cargo test --workspace --features certs
+
+  host-clippy:
+    name: Clippy (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "host"
+      - name: Clippy (all features)
+        run: cargo clippy --workspace --all-targets --features "mock,certs" -- -D warnings
+
+  host-fmt:
+    name: Format (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # ── Coverage ─────────────────────────────────────────────────────────────
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "host"
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate coverage
+        run: cargo llvm-cov --workspace --features "mock,certs" --lcov --output-path lcov.info
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── Firmware: cargo check (cross-compile, no flash) ─────────────────────
+  # Non-blocking: Embassy API changes require firmware updates validated with
+  # real hardware during Phase 10 (HIL bringup). Host library CI is the gate.
+  firmware-check:
+    name: Check (firmware)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: thumbv8m.main-none-eabihf
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "firmware"
+      - name: Cargo check (non-TZ)
+        working-directory: firmware
+        run: cargo check --release
+      - name: Cargo check (TrustZone)
+        working-directory: firmware
+        run: cargo check --release --features trustzone

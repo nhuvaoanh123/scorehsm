@@ -34,15 +34,8 @@ fn test_ikev2_derive_keys_produces_distinct_keys() {
     let spi_i = [0x01u8; 8];
     let spi_r = [0x02u8; 8];
 
-    let keys = ikev2_derive_keys(
-        &b,
-        local_h,
-        &peer_pub,
-        &nonce_i,
-        &nonce_r,
-        &spi_i,
-        &spi_r,
-    ).unwrap();
+    let keys =
+        ikev2_derive_keys(&b, local_h, &peer_pub, &nonce_i, &nonce_r, &spi_i, &spi_r).unwrap();
 
     // All five fields must be distinct.
     assert_ne!(keys.sk_d, keys.sk_ai, "SK_d and SK_ai must differ");
@@ -59,10 +52,9 @@ fn test_ikev2_derive_keys_deterministic() {
 
     // Use a known P-256 private scalar.
     let scalar = [
-        0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,
-        0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,0x10,
-        0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,
-        0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,0x20u8,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e,
+        0x1f, 0x20u8,
     ];
 
     // Build a known peer public key.
@@ -89,7 +81,10 @@ fn test_ikev2_derive_keys_deterministic() {
     // This confirms the ECDH feeds into derivation.
     // (Equal keys would indicate the ECDH result is being ignored.)
     let any_same = keys1.sk_d == keys2.sk_d && keys1.sk_ei == keys2.sk_ei;
-    assert!(!any_same, "different ECDH keys must produce different IKEv2 session keys");
+    assert!(
+        !any_same,
+        "different ECDH keys must produce different IKEv2 session keys"
+    );
 }
 
 // ── MACSec / MKA ──────────────────────────────────────────────────────────────
@@ -117,8 +112,14 @@ fn test_macsec_mka_different_cak_name_different_keys() {
     let mka1 = macsec_derive_mka_keys(&b, cak, b"CAK_NAME_A").unwrap();
     let mka2 = macsec_derive_mka_keys(&b, cak, b"CAK_NAME_B").unwrap();
 
-    assert_ne!(mka1.ick, mka2.ick, "different CAK names must produce different ICK");
-    assert_ne!(mka1.kek, mka2.kek, "different CAK names must produce different KEK");
+    assert_ne!(
+        mka1.ick, mka2.ick,
+        "different CAK names must produce different ICK"
+    );
+    assert_ne!(
+        mka1.kek, mka2.kek,
+        "different CAK names must produce different KEK"
+    );
 }
 
 // ── Domain separation edge cases ──────────────────────────────────────────────
@@ -140,11 +141,35 @@ fn test_ikev2_nonce_domain_separation() {
     let spi_i = [0x01u8; 8];
     let spi_r = [0x02u8; 8];
 
-    let keys_a = ikev2_derive_keys(&b, h, &peer_pub, &[0xAAu8; 32], &[0xBBu8; 32], &spi_i, &spi_r).unwrap();
-    let keys_b = ikev2_derive_keys(&b, h, &peer_pub, &[0xCCu8; 32], &[0xDDu8; 32], &spi_i, &spi_r).unwrap();
+    let keys_a = ikev2_derive_keys(
+        &b,
+        h,
+        &peer_pub,
+        &[0xAAu8; 32],
+        &[0xBBu8; 32],
+        &spi_i,
+        &spi_r,
+    )
+    .unwrap();
+    let keys_b = ikev2_derive_keys(
+        &b,
+        h,
+        &peer_pub,
+        &[0xCCu8; 32],
+        &[0xDDu8; 32],
+        &spi_i,
+        &spi_r,
+    )
+    .unwrap();
 
-    assert_ne!(keys_a.sk_d,  keys_b.sk_d,  "different nonces must produce different SK_d");
-    assert_ne!(keys_a.sk_ei, keys_b.sk_ei, "different nonces must produce different SK_ei");
+    assert_ne!(
+        keys_a.sk_d, keys_b.sk_d,
+        "different nonces must produce different SK_d"
+    );
+    assert_ne!(
+        keys_a.sk_ei, keys_b.sk_ei,
+        "different nonces must produce different SK_ei"
+    );
 }
 
 /// Different SPIs produce different IKEv2 session keys (SPI domain separation).
@@ -164,11 +189,35 @@ fn test_ikev2_spi_domain_separation() {
     let nonce_i = [0xAAu8; 16];
     let nonce_r = [0xBBu8; 16];
 
-    let keys_a = ikev2_derive_keys(&b, h, &peer_pub, &nonce_i, &nonce_r, &[0x11u8; 8], &[0x22u8; 8]).unwrap();
-    let keys_b = ikev2_derive_keys(&b, h, &peer_pub, &nonce_i, &nonce_r, &[0x33u8; 8], &[0x44u8; 8]).unwrap();
+    let keys_a = ikev2_derive_keys(
+        &b,
+        h,
+        &peer_pub,
+        &nonce_i,
+        &nonce_r,
+        &[0x11u8; 8],
+        &[0x22u8; 8],
+    )
+    .unwrap();
+    let keys_b = ikev2_derive_keys(
+        &b,
+        h,
+        &peer_pub,
+        &nonce_i,
+        &nonce_r,
+        &[0x33u8; 8],
+        &[0x44u8; 8],
+    )
+    .unwrap();
 
-    assert_ne!(keys_a.sk_d,  keys_b.sk_d,  "different SPIs must produce different SK_d");
-    assert_ne!(keys_a.sk_ei, keys_b.sk_ei, "different SPIs must produce different SK_ei");
+    assert_ne!(
+        keys_a.sk_d, keys_b.sk_d,
+        "different SPIs must produce different SK_d"
+    );
+    assert_ne!(
+        keys_a.sk_ei, keys_b.sk_ei,
+        "different SPIs must produce different SK_ei"
+    );
 }
 
 /// Passing a non-HMAC handle as the CAK for MKA derivation must be rejected.
@@ -177,5 +226,8 @@ fn test_macsec_wrong_key_type_rejected() {
     let mut b = init_backend();
     let aes_handle = b.key_generate(KeyType::Aes256).unwrap();
     let result = macsec_derive_mka_keys(&b, aes_handle, b"CAK_NAME");
-    assert!(result.is_err(), "MACSec MKA derivation with non-HMAC key must be rejected");
+    assert!(
+        result.is_err(),
+        "MACSec MKA derivation with non-HMAC key must be rejected"
+    );
 }

@@ -19,7 +19,7 @@ Status: COMPLETE
 │  └─────────────────────────┘  └──────────────┬───────────────┘  │
 ├───────────────────────────────────────────────┼─────────────────┤
 │  USB CDC  /dev/ttyACM0                        │                  │
-│  Binary frame protocol (CRC-16, seq num)      │                  │
+│  Binary frame protocol (CRC-32/MPEG-2, seq num) │                  │
 ├───────────────────────────────────────────────┼─────────────────┤
 │  STM32L552 — Non-Secure world                 │                  │
 │  USB endpoint + command dispatcher            │                  │
@@ -48,18 +48,20 @@ Status: COMPLETE
 Every command (Pi → L55) and response (L55 → Pi) uses the same frame structure:
 
 ```
+[MAGIC:2][CMD:1][SEQ:4LE][LEN:2LE][PAYLOAD:LEN][CRC32:4LE]
+
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────────────────────
 0       2     MAGIC  = 0xAB 0xCD  (sync / frame start)
 2       1     CMD    = command/response opcode (see §2.2)
-3       1     SEQ    = monotonic sequence number (0x00–0xFF, wraps)
-4       2     LEN    = payload length in bytes (little-endian, max 512)
-6       LEN   PAYLOAD
-6+LEN   2     CRC16  = CRC-16/CCITT over bytes [0 .. 6+LEN-1]
+3       4     SEQ    = monotonic sequence number (u32, little-endian)
+7       2     LEN    = payload length in bytes (little-endian, max 512)
+9       LEN   PAYLOAD
+9+LEN   4     CRC32  = CRC-32/MPEG-2 over bytes [0 .. 9+LEN-1]
 ```
 
-Total minimum frame size: 8 bytes (no payload).
-Maximum frame size: 6 + 512 + 2 = 520 bytes.
+Total minimum frame size: 13 bytes (no payload).  FRAME_OVERHEAD = 13.
+Maximum frame size: 9 + 512 + 4 = 525 bytes.
 
 ### 2.2 Opcodes
 
@@ -95,14 +97,14 @@ Maximum frame size: 6 + 512 + 2 = 520 bytes.
 | 0x87 | RSP_ERR_BAD_FRAME | — |
 | 0x88 | RSP_ERR_RATE_LIMIT | — |
 
-### 2.3 CRC-16
+### 2.3 CRC-32/MPEG-2
 
-Algorithm: CRC-16/CCITT (poly 0x1021, init 0xFFFF, no reflection).
-Computed over the entire frame excluding the CRC field itself.
+Algorithm: CRC-32/MPEG-2 (poly 0x04C11DB7, init 0xFFFFFFFF, no reflection, no final XOR).
+Computed over the entire frame excluding the CRC field itself (bytes 0 through 9+LEN-1).
 
 ### 2.4 Sequence number
 
-- Pi starts at 0x00 on each init, increments per command (wraps 0xFF → 0x00).
+- Pi starts at 0x00000000 on each init, increments per command (u32 saturating, refuses at 0xFFFFFFFF — re-init required).
 - L55 echoes the received SEQ in every response.
 - If L55 receives SEQ != expected: discard frame, respond RSP_ERR_BAD_FRAME.
 
@@ -229,9 +231,9 @@ SAU regions configured at boot by S firmware before NS execution begins.
 ```
 SRAM2 layout (64 KB):
   Offset 0x0000 – 0x007F   Key store header (magic, slot count, version)
-  Offset 0x0080 – 0x3FFF   8 key slots × 2 KB each
+  Offset 0x0080 – 0x3FFF   32 key slots × 128 B each
 
-Key slot structure (2 KB):
+Key slot structure (128 B):
   [0x000]  u32   slot_state  (0 = empty, 1 = active, 0xDEAD = deleted/zeroized)
   [0x004]  u32   key_type    (AES256=1, HMAC=2, ECC_P256=3)
   [0x008]  u32   handle_id   (opaque ID returned to NS/Pi)

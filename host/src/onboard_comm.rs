@@ -30,11 +30,7 @@
 use hkdf::Hkdf;
 use sha2::Sha256;
 
-use crate::{
-    backend::HsmBackend,
-    error::HsmResult,
-    types::KeyHandle,
-};
+use crate::{backend::HsmBackend, error::HsmResult, types::KeyHandle};
 
 // ── IKEv2 ─────────────────────────────────────────────────────────────────────
 
@@ -50,7 +46,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Ikev2KeyMaterial {
     /// SK_d — key for deriving child SA key material.
-    pub sk_d:  [u8; 32],
+    pub sk_d: [u8; 32],
     /// SK_ai — integrity key for data from initiator to responder.
     pub sk_ai: [u8; 32],
     /// SK_ar — integrity key for data from responder to initiator.
@@ -97,13 +93,12 @@ pub fn ikev2_derive_keys<B: HsmBackend>(
     // Step 3: prf+(SKEYSEED, Ni | Nr | SPIi | SPIr) → 5 × 32 = 160 bytes.
     // HKDF-Expand(PRK=SKEYSEED, info=Ni|Nr|SPIi|SPIr, L=160)
     let info: Vec<u8> = [nonce_i, nonce_r, spi_i.as_slice(), spi_r.as_slice()].concat();
-    let hk = Hkdf::<Sha256>::from_prk(&skeyseed)
-        .expect("SKEYSEED is 32 bytes — valid PRK");
+    let hk = Hkdf::<Sha256>::from_prk(&skeyseed).expect("SKEYSEED is 32 bytes — valid PRK");
     let mut okm = [0u8; 160];
     hk.expand(&info, &mut okm).expect("160 bytes < 255*32");
 
     Ok(Ikev2KeyMaterial {
-        sk_d:  okm[0..32].try_into().unwrap(),
+        sk_d: okm[0..32].try_into().unwrap(),
         sk_ai: okm[32..64].try_into().unwrap(),
         sk_ar: okm[64..96].try_into().unwrap(),
         sk_ei: okm[96..128].try_into().unwrap(),

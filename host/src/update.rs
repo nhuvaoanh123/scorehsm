@@ -45,7 +45,9 @@ pub fn verify_update_image(
 ) -> HsmResult<()> {
     // 1. Rollback check.
     if image_version <= installed_version {
-        ids.on_event(IdsEvent::UpdateRejected { reason: "version rollback" });
+        ids.on_event(IdsEvent::UpdateRejected {
+            reason: "version rollback",
+        });
         return Err(HsmError::InvalidParam(format!(
             "update version {image_version} not greater than installed {installed_version}"
         )));
@@ -59,24 +61,30 @@ pub fn verify_update_image(
         ecdsa::{signature::hazmat::PrehashVerifier, VerifyingKey},
         PublicKey,
     };
-    let pk = PublicKey::from_sec1_bytes(code_signing_pk)
-        .map_err(|_| {
-            ids.on_event(IdsEvent::UpdateRejected { reason: "invalid code-signing key" });
-            HsmError::CryptoFail("invalid code-signing public key".into())
-        })?;
+    let pk = PublicKey::from_sec1_bytes(code_signing_pk).map_err(|_| {
+        ids.on_event(IdsEvent::UpdateRejected {
+            reason: "invalid code-signing key",
+        });
+        HsmError::CryptoFail("invalid code-signing public key".into())
+    })?;
     let vk = VerifyingKey::from(&pk);
 
     // 4. Parse DER signature.
-    let sig = p256::ecdsa::Signature::from_der(signature_der)
-        .map_err(|_| {
-            ids.on_event(IdsEvent::UpdateRejected { reason: "signature parse failed" });
-            HsmError::CryptoFail("invalid update signature encoding".into())
-        })?;
+    let sig = p256::ecdsa::Signature::from_der(signature_der).map_err(|_| {
+        ids.on_event(IdsEvent::UpdateRejected {
+            reason: "signature parse failed",
+        });
+        HsmError::CryptoFail("invalid update signature encoding".into())
+    })?;
 
     // 5. Verify.
     if vk.verify_prehash(&digest, &sig).is_err() {
-        ids.on_event(IdsEvent::UpdateRejected { reason: "signature invalid" });
-        return Err(HsmError::CryptoFail("firmware image signature verification failed".into()));
+        ids.on_event(IdsEvent::UpdateRejected {
+            reason: "signature invalid",
+        });
+        return Err(HsmError::CryptoFail(
+            "firmware image signature verification failed".into(),
+        ));
     }
 
     Ok(())
@@ -90,5 +98,12 @@ pub fn verify_update_image_no_ids(
     image_version: u32,
     installed_version: u32,
 ) -> HsmResult<()> {
-    verify_update_image(image, signature_der, code_signing_pk, image_version, installed_version, &NullIds)
+    verify_update_image(
+        image,
+        signature_der,
+        code_signing_pk,
+        image_version,
+        installed_version,
+        &NullIds,
+    )
 }

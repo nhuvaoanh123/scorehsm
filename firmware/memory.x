@@ -1,8 +1,10 @@
-/* STM32L552ZE — Non-Secure partition (initial: no TrustZone, full flash/RAM)
+/* STM32L552ZE — Non-Secure build (no TrustZone, full flash/RAM)
  *
- * When TrustZone is enabled (see src/trustzone.rs), the NS image will
- * be relocated to 0x08060000 and the SAU will restrict SRAM1 to NS use.
- * For now the entire device runs in Non-Secure/privileged mode.
+ * Used when building WITHOUT the `trustzone` feature (default).
+ * The entire device runs in Non-Secure/privileged mode.
+ *
+ * For TrustZone builds (cargo build --features trustzone), see memory-tz.x
+ * which uses the Secure flash alias at 0x0C000000.
  *
  * Hardware:
  *   Flash : 512 KB  at 0x08000000

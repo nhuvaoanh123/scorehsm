@@ -50,6 +50,30 @@ docs/       — V-model artifacts (requirements, architecture, plans, safety)
 
 ---
 
+## Test Suite
+
+| Category | Count | Coverage |
+|---|---|---|
+| Unit tests (host) | 54 | Safety, transport, crypto, mock backend |
+| Integration tests (ITP) | 58 | TSR-TIG, NMG, SMG, RLG, SSG, IVG, CG |
+| Qualification tests (QTE) | 57 | All 16 FSRs (FSR-01 through FSR-16) |
+| Feature tests | 58 | SW backend, session, update, activation, onboard comm |
+| **Total** | **227** | |
+
+```bash
+# Run all tests
+cargo test --workspace --features "mock,certs"
+
+# Clippy
+cargo clippy --workspace --all-targets --features "mock,certs" -- -D warnings
+```
+
+---
+
 ## Status
 
-Phase 0 — Scope definition complete. Planning in progress.
+Phases 0–9 complete. HIL hardware verification (Phase 10) pending.
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).

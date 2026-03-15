@@ -2,7 +2,9 @@
 //!
 //! `HsmSession` enforces:
 //! - Handle ownership: a session can only use key handles it generated or imported.
-//! - Rate limiting: per-operation call counters with configurable limits.
+//! - Rate limiting: global token-bucket rate limiter (TSR-RLG-01).
+//! - Library state: blocks all operations in safe state (TSR-SSG-01).
+//! - Handle-map integrity: CRC-32 checksum on insert/remove (TSR-SSG-02).
 //! - IDS event reporting: every security-relevant event is forwarded to the hook.
 //!
 //! Usage:
@@ -10,7 +12,7 @@
 //! let backend = SoftwareBackend::new();
 //! let mut session = HsmSession::new(backend)
 //!     .with_ids_hook(Box::new(LoggingIds))
-//!     .with_rate_limit(RateLimits::default());
+//!     .with_rate_limits(RateLimits::default());
 //! session.init()?;
 //! let h = session.key_generate(KeyType::EccP256)?;
 //! let digest = session.sha256(b"data")?;
@@ -18,16 +20,18 @@
 //! ```
 
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::{
     backend::HsmBackend,
     error::{HsmError, HsmResult},
     ids::{IdsEvent, IdsHook, NullIds},
+    safety::{Clock, KeyStoreChecksum, LibraryState, SystemClock, TokenBucketRateLimiter},
     types::{AesGcmParams, EcdsaSignature, KeyHandle, KeyType},
 };
 
-// ── Rate limiter ──────────────────────────────────────────────────────────────
+// ── Rate limit configuration (legacy types — preserved for backward compat) ──
 
 /// Per-operation rate limit: max `max_count` calls within `window`.
 #[derive(Clone, Debug)]
@@ -41,7 +45,10 @@ pub struct OpLimit {
 impl OpLimit {
     /// Create a new per-operation limit.
     pub fn new(max_count: u32, window_secs: u64) -> Self {
-        Self { max_count, window: Duration::from_secs(window_secs) }
+        Self {
+            max_count,
+            window: Duration::from_secs(window_secs),
+        }
     }
 }
 
@@ -49,68 +56,24 @@ impl OpLimit {
 #[derive(Clone, Debug)]
 pub struct RateLimits {
     /// Limit for ECDSA sign operations.
-    pub sign:    OpLimit,
+    pub sign: OpLimit,
     /// Limit for AES-GCM decrypt operations.
     pub decrypt: OpLimit,
     /// Limit for random byte generation.
-    pub random:  OpLimit,
+    pub random: OpLimit,
     /// Limit for key derivation (HKDF) operations.
-    pub derive:  OpLimit,
+    pub derive: OpLimit,
 }
 
 impl Default for RateLimits {
     fn default() -> Self {
         Self {
-            sign:    OpLimit::new(1000, 60),  // 1000 signatures/min
-            decrypt: OpLimit::new(1000, 60),  // 1000 decrypts/min
-            random:  OpLimit::new(500, 60),   // 500 random calls/min
-            derive:  OpLimit::new(100, 60),   // 100 derives/min
+            sign: OpLimit::new(1000, 60),    // 1000 signatures/min
+            decrypt: OpLimit::new(1000, 60), // 1000 decrypts/min
+            random: OpLimit::new(500, 60),   // 500 random calls/min
+            derive: OpLimit::new(100, 60),   // 100 derives/min
         }
     }
-}
-
-struct Counter {
-    count: u32,
-    window_start: Instant,
-}
-
-impl Counter {
-    fn new() -> Self { Self { count: 0, window_start: Instant::now() } }
-
-    /// Returns true if within limit, false if limit exceeded.
-    fn check(&mut self, limit: &OpLimit) -> bool {
-        if self.window_start.elapsed() > limit.window {
-            self.count = 0;
-            self.window_start = Instant::now();
-        }
-        self.count += 1;
-        self.count <= limit.max_count
-    }
-}
-
-struct RateLimiter {
-    sign:    Counter,
-    decrypt: Counter,
-    random:  Counter,
-    derive:  Counter,
-    limits:  RateLimits,
-}
-
-impl RateLimiter {
-    fn new(limits: RateLimits) -> Self {
-        Self {
-            sign:    Counter::new(),
-            decrypt: Counter::new(),
-            random:  Counter::new(),
-            derive:  Counter::new(),
-            limits,
-        }
-    }
-
-    fn check_sign(&mut self)    -> bool { self.sign.check(&self.limits.sign.clone()) }
-    fn check_decrypt(&mut self) -> bool { self.decrypt.check(&self.limits.decrypt.clone()) }
-    fn check_random(&mut self)  -> bool { self.random.check(&self.limits.random.clone()) }
-    fn check_derive(&mut self)  -> bool { self.derive.check(&self.limits.derive.clone()) }
 }
 
 // ── HsmSession ────────────────────────────────────────────────────────────────
@@ -119,22 +82,30 @@ impl RateLimiter {
 ///
 /// Create with `HsmSession::new(backend)`, configure, then call `init()`.
 pub struct HsmSession {
-    backend:        Box<dyn HsmBackend>,
-    owned_handles:  HashSet<u32>,  // set of handle values owned by this session
-    ids:            Box<dyn IdsHook>,
-    rate:           RateLimiter,
-    fail_count:     u32,           // consecutive failure counter for IDS
+    backend: Box<dyn HsmBackend>,
+    owned_handles: HashSet<u32>,
+    ids: Box<dyn IdsHook>,
+    rate: Arc<TokenBucketRateLimiter>,
+    library_state: Arc<LibraryState>,
+    checksum: KeyStoreChecksum,
+    clock: Arc<dyn Clock>,
+    fail_count: u32,
 }
 
 impl HsmSession {
     /// Create a session wrapping `backend`.
     pub fn new<B: HsmBackend + 'static>(backend: B) -> Self {
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+        let rate = Arc::new(TokenBucketRateLimiter::with_defaults(clock.clone()));
         Self {
-            backend:       Box::new(backend),
+            backend: Box::new(backend),
             owned_handles: HashSet::new(),
-            ids:           Box::new(NullIds),
-            rate:          RateLimiter::new(RateLimits::default()),
-            fail_count:    0,
+            ids: Box::new(NullIds),
+            rate,
+            library_state: Arc::new(LibraryState::new()),
+            checksum: KeyStoreChecksum::new(),
+            clock,
+            fail_count: 0,
         }
     }
 
@@ -144,9 +115,31 @@ impl HsmSession {
         self
     }
 
-    /// Set rate limits. Returns `self` for method chaining.
+    /// Set rate limits (legacy API — converts to token bucket internally).
     pub fn with_rate_limits(mut self, limits: RateLimits) -> Self {
-        self.rate = RateLimiter::new(limits);
+        self.rate = Arc::new(TokenBucketRateLimiter::from_legacy(
+            &limits,
+            self.clock.clone(),
+        ));
+        self
+    }
+
+    /// Set the clock source (for testing with [`MockClock`](crate::safety::MockClock)).
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock.clone();
+        self.rate = Arc::new(TokenBucketRateLimiter::with_defaults(clock));
+        self
+    }
+
+    /// Share a library state across multiple sessions.
+    pub fn with_library_state(mut self, state: Arc<LibraryState>) -> Self {
+        self.library_state = state;
+        self
+    }
+
+    /// Inject a pre-configured rate limiter (for sharing across sessions).
+    pub fn with_rate_limiter(mut self, rl: Arc<TokenBucketRateLimiter>) -> Self {
+        self.rate = rl;
         self
     }
 
@@ -163,37 +156,61 @@ impl HsmSession {
 
     fn record_fail(&mut self) {
         self.fail_count += 1;
-        if self.fail_count % 10 == 0 {
-            self.ids.on_event(IdsEvent::RepeatedFailure { count: self.fail_count });
+        if self.fail_count.is_multiple_of(10) {
+            self.ids.on_event(IdsEvent::RepeatedFailure {
+                count: self.fail_count,
+            });
         }
+    }
+
+    /// Helper: check rate limit and emit IDS event on rejection.
+    fn check_rate(&self, op: &'static str) -> HsmResult<()> {
+        if let Err(HsmError::RateLimitExceeded) = self.rate.try_acquire(op) {
+            self.ids.on_event(IdsEvent::RateLimitExceeded {
+                operation: op,
+                count: 0,
+            });
+            return Err(HsmError::RateLimitExceeded);
+        }
+        Ok(())
     }
 
     // ── Delegating API ────────────────────────────────────────────────────────
 
-    /// Initialise the underlying backend.
+    /// Initialise the underlying backend and transition to operating state.
     pub fn init(&mut self) -> HsmResult<()> {
-        self.backend.init()
+        self.backend.init()?;
+        self.library_state.transition_to_operating()
     }
 
     /// Deinitialise. All owned handles become invalid.
     pub fn deinit(&mut self) -> HsmResult<()> {
         self.owned_handles.clear();
+        self.checksum.update(&self.owned_handles);
+        self.library_state.transition_to_uninitialized();
         self.backend.deinit()
     }
 
     /// Generate a key. The returned handle is owned by this session.
     pub fn key_generate(&mut self, key_type: KeyType) -> HsmResult<KeyHandle> {
+        self.library_state.check_not_safe()?;
         let h = self.backend.key_generate(key_type)?;
         self.owned_handles.insert(h.0);
-        self.ids.on_event(IdsEvent::KeyGenerated { handle: h, key_type });
+        self.checksum.update(&self.owned_handles);
+        self.ids.on_event(IdsEvent::KeyGenerated {
+            handle: h,
+            key_type,
+        });
         Ok(h)
     }
 
     /// Delete a key owned by this session.
     pub fn key_delete(&mut self, handle: KeyHandle) -> HsmResult<()> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
         self.backend.key_delete(handle)?;
         self.owned_handles.remove(&handle.0);
+        self.checksum.update(&self.owned_handles);
         self.ids.on_event(IdsEvent::KeyDeleted { handle });
         Ok(())
     }
@@ -205,29 +222,28 @@ impl HsmSession {
         info: &[u8],
         out_type: KeyType,
     ) -> HsmResult<KeyHandle> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(base)?;
-        if !self.rate.check_derive() {
-            self.ids.on_event(IdsEvent::RateLimitExceeded { operation: "derive", count: self.rate.derive.count });
-            return Err(HsmError::UsbError("rate limit exceeded: derive".into()));
-        }
+        self.check_rate("derive")?;
         let h = self.backend.key_derive(base, info, out_type)?;
         self.owned_handles.insert(h.0);
+        self.checksum.update(&self.owned_handles);
         Ok(h)
     }
 
     /// Import a wrapped key. The returned handle is owned by this session.
     pub fn key_import(&mut self, key_type: KeyType, wrapped: &[u8]) -> HsmResult<KeyHandle> {
+        self.library_state.check_not_safe()?;
         let h = self.backend.key_import(key_type, wrapped)?;
         self.owned_handles.insert(h.0);
+        self.checksum.update(&self.owned_handles);
         Ok(h)
     }
 
     /// Generate random bytes.
     pub fn random(&mut self, out: &mut [u8]) -> HsmResult<()> {
-        if !self.rate.check_random() {
-            self.ids.on_event(IdsEvent::RateLimitExceeded { operation: "random", count: self.rate.random.count });
-            return Err(HsmError::UsbError("rate limit exceeded: random".into()));
-        }
+        self.library_state.check_not_safe()?;
+        self.check_rate("random")?;
         self.backend.random(out)
     }
 
@@ -238,6 +254,7 @@ impl HsmSession {
 
     /// HMAC-SHA256 — key must be owned by this session.
     pub fn hmac_sha256(&mut self, handle: KeyHandle, data: &[u8]) -> HsmResult<[u8; 32]> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
         self.backend.hmac_sha256(handle, data)
     }
@@ -249,6 +266,7 @@ impl HsmSession {
         params: &AesGcmParams,
         plaintext: &[u8],
     ) -> HsmResult<(Vec<u8>, [u8; 16])> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
         self.backend.aes_gcm_encrypt(handle, params, plaintext)
     }
@@ -261,12 +279,13 @@ impl HsmSession {
         ciphertext: &[u8],
         tag: &[u8; 16],
     ) -> HsmResult<Vec<u8>> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
-        if !self.rate.check_decrypt() {
-            self.ids.on_event(IdsEvent::RateLimitExceeded { operation: "decrypt", count: self.rate.decrypt.count });
-            return Err(HsmError::UsbError("rate limit exceeded: decrypt".into()));
-        }
-        match self.backend.aes_gcm_decrypt(handle, params, ciphertext, tag) {
+        self.check_rate("decrypt")?;
+        match self
+            .backend
+            .aes_gcm_decrypt(handle, params, ciphertext, tag)
+        {
             Ok(pt) => Ok(pt),
             Err(HsmError::TagMismatch) => {
                 self.record_fail();
@@ -283,13 +302,14 @@ impl HsmSession {
         handle: KeyHandle,
         digest: &[u8; 32],
     ) -> HsmResult<EcdsaSignature> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
-        if !self.rate.check_sign() {
-            self.ids.on_event(IdsEvent::RateLimitExceeded { operation: "sign", count: self.rate.sign.count });
-            return Err(HsmError::UsbError("rate limit exceeded: sign".into()));
-        }
+        self.check_rate("sign")?;
         let sig = self.backend.ecdsa_sign(handle, digest)?;
-        self.ids.on_event(IdsEvent::EcdsaSigned { handle, digest: *digest });
+        self.ids.on_event(IdsEvent::EcdsaSigned {
+            handle,
+            digest: *digest,
+        });
         Ok(sig)
     }
 
@@ -300,12 +320,14 @@ impl HsmSession {
         digest: &[u8; 32],
         signature: &EcdsaSignature,
     ) -> HsmResult<bool> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
         self.backend.ecdsa_verify(handle, digest, signature)
     }
 
     /// ECDH key agreement.
     pub fn ecdh_agree(&mut self, handle: KeyHandle, peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]> {
+        self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
         self.backend.ecdh_agree(handle, peer_pub)
     }

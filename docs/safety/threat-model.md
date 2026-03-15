@@ -64,7 +64,7 @@ Status: COMPLETE
 
 | ID | Threat | Attack vector | Countermeasure |
 |----|---|---|---|
-| T1 | Attacker flips bits in USB frame (ciphertext, IV, AAD) | USB cable / man-in-middle | CRC-16 on every frame. AES-GCM tag verification catches ciphertext/AAD tampering |
+| T1 | Attacker flips bits in USB frame (ciphertext, IV, AAD) | USB cable / man-in-middle | CRC-32/MPEG-2 on every frame. AES-GCM tag verification catches ciphertext/AAD tampering |
 | T2 | Attacker modifies L55 firmware over SWD | Physical access to SWD port | SWD must be locked in production (RDP Level 2). Documented in deployment guide |
 | T3 | NS world writes to S-world SRAM2 | TrustZone violation | SAU/IDAU enforces S/NS memory separation in hardware. Violation triggers SecureFault |
 | T4 | Attacker modifies Pi-side library to log key handles and correlate with plaintext | Supply chain / OS compromise | Out of scope for this module — OS-level threat |
@@ -91,7 +91,7 @@ Status: COMPLETE
 | ID | Threat | Attack vector | Countermeasure |
 |----|---|---|---|
 | D1 | Host floods L55 with expensive PKA (ECDSA) operations, starving other operations | USB command flood | Rate limiter in host library. Per-operation throttle. L55 command queue bounded |
-| D2 | Attacker exhausts all key slots by generating keys and never deleting | Malicious application | Key slot limit enforced (8 slots). Access control: only authorized handles can generate |
+| D2 | Attacker exhausts all key slots by generating keys and never deleting | Malicious application | Key slot limit enforced (32 slots). Access control: only authorized handles can generate |
 | D3 | USB disconnect/reconnect loop disrupts crypto operations | Physical USB manipulation | Host library detects disconnect, returns error, re-enumerates. In-flight operation result is discarded |
 | D4 | L55 watchdog not fed during long PKA operation — resets during signing | Firmware design | Embassy task structure feeds watchdog around blocking PKA operations |
 

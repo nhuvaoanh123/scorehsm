@@ -44,7 +44,7 @@ The following items are explicitly out of scope for this verification report:
 
 - **L55 firmware** — Non-Secure USB dispatcher, TrustZone NSC gateway, Secure-world cryptographic drivers. These are verified in the HIL test report.
 - **`HardwareBackend` hardware paths** — USB CDC frame protocol conformance on live hardware, L55 AES/PKA/HASH peripheral behavior, TrustZone SRAM2 isolation. HIL required.
-- **USB CDC binary frame protocol** — Frame CRC-16 and sequence number enforcement (HSM-REQ-041, HSM-REQ-044) are verified at the firmware level in the HIL test report.
+- **USB CDC binary frame protocol** — Frame CRC-32/MPEG-2 and u32 sequence number enforcement (HSM-REQ-041, HSM-REQ-044) are verified at the firmware level in the HIL test report.
 - **Secure boot** (HSM-REQ-046) — L55 bootloader verification. HIL required.
 - **Benchmarks** (HSM-REQ-028) — Performance characterization is documented in `docs/benchmarks/` and is not a safety verification activity.
 

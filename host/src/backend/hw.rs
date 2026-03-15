@@ -6,7 +6,7 @@
 //!
 //! Frame format (§2.1 of architecture.md):
 //! ```text
-//! [MAGIC:2][CMD:1][SEQ:1][LEN:2LE][PAYLOAD:LEN][CRC32:4LE]
+//! [MAGIC:2][CMD:1][SEQ:4LE][LEN:2LE][PAYLOAD:LEN][CRC32:4LE]
 //! ```
 //! MAGIC = 0xAB 0xCD; CRC-32/MPEG-2 poly=0x04C11DB7 init=0xFFFFFFFF no-reflect no-XorOut.
 //!
@@ -14,8 +14,8 @@
 //! Hamming distance ≥4 for frames up to 512 bytes, satisfying the ASIL B transport
 //! integrity requirement (FSR-08).
 
-use std::sync::Mutex;
 use serialport::SerialPort;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::{
@@ -26,48 +26,48 @@ use crate::{
 
 // ── Protocol constants (must match firmware/src/protocol.rs) ─────────────────
 
-const MAGIC: [u8; 2]        = [0xAB, 0xCD];
-const MAX_PAYLOAD: usize    = 512;
-/// Fixed header (6 B) + CRC-32 trailer (4 B).
-const FRAME_OVERHEAD: usize = 10;
-/// Length of the fixed frame header: [MAGIC:2][CMD:1][SEQ:1][LEN:2].
-const HDR_LEN: usize = 6;
+const MAGIC: [u8; 2] = [0xAB, 0xCD];
+const MAX_PAYLOAD: usize = 512;
+/// Fixed header (9 B) + CRC-32 trailer (4 B).
+const FRAME_OVERHEAD: usize = 13;
+/// Length of the fixed frame header: [MAGIC:2][CMD:1][SEQ:4LE][LEN:2].
+const HDR_LEN: usize = 9;
 
 #[repr(u8)]
 #[allow(dead_code)]
 enum Cmd {
-    Init        = 0x01,
-    Random      = 0x02,
-    Sha256      = 0x03,
-    HmacSha256  = 0x04,
-    AesGcmEnc   = 0x05,
-    AesGcmDec   = 0x06,
-    EcdsaSign   = 0x07,
+    Init = 0x01,
+    Random = 0x02,
+    Sha256 = 0x03,
+    HmacSha256 = 0x04,
+    AesGcmEnc = 0x05,
+    AesGcmDec = 0x06,
+    EcdsaSign = 0x07,
     EcdsaVerify = 0x08,
     KeyGenerate = 0x09,
-    KeyDelete   = 0x0A,
-    KeyDerive   = 0x0B,
+    KeyDelete = 0x0A,
+    KeyDerive = 0x0B,
 }
 
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq)]
 enum Rsp {
-    Ok         = 0x80,
-    Random     = 0x81,
-    Sha256     = 0x82,
-    Mac        = 0x83,
-    AesCipher  = 0x84,
-    AesPlain   = 0x85,
-    EcdsaSig   = 0x86,
+    Ok = 0x80,
+    Random = 0x81,
+    Sha256 = 0x82,
+    Mac = 0x83,
+    AesCipher = 0x84,
+    AesPlain = 0x85,
+    EcdsaSig = 0x86,
     EcdsaValid = 0x87,
-    KeyHandle  = 0x88,
+    KeyHandle = 0x88,
     ErrUnknownCmd = 0xF0,
-    ErrBadFrame   = 0xF1,
-    ErrBadKey     = 0xF2,
-    ErrCrypto     = 0xF3,
-    ErrNotInit    = 0xF4,
-    ErrBadParam   = 0xF5,
-    ErrRateLimit  = 0xF6,
+    ErrBadFrame = 0xF1,
+    ErrBadKey = 0xF2,
+    ErrCrypto = 0xF3,
+    ErrNotInit = 0xF4,
+    ErrBadParam = 0xF5,
+    ErrRateLimit = 0xF6,
 }
 
 impl TryFrom<u8> for Rsp {
@@ -129,7 +129,7 @@ mod crc_kat {
 
 struct Inner {
     port: Option<Box<dyn SerialPort + Send>>,
-    seq: u8,
+    seq: u32,
     initialized: bool,
 }
 
@@ -139,42 +139,52 @@ impl Inner {
             return Err(HsmError::InvalidParam("payload too large".into()));
         }
         let len = payload.len();
-        // FRAME_OVERHEAD = HDR_LEN(6) + CRC32(4) = 10
+        // FRAME_OVERHEAD = HDR_LEN(9) + CRC32(4) = 13
         let total = FRAME_OVERHEAD + len;
         let mut frame = vec![0u8; total];
         frame[0] = MAGIC[0];
         frame[1] = MAGIC[1];
         frame[2] = cmd as u8;
-        frame[3] = self.seq;
-        frame[4] = (len & 0xFF) as u8;
-        frame[5] = ((len >> 8) & 0xFF) as u8;
+        let seq_bytes = self.seq.to_le_bytes();
+        frame[3] = seq_bytes[0];
+        frame[4] = seq_bytes[1];
+        frame[5] = seq_bytes[2];
+        frame[6] = seq_bytes[3];
+        frame[7] = (len & 0xFF) as u8;
+        frame[8] = ((len >> 8) & 0xFF) as u8;
         frame[HDR_LEN..HDR_LEN + len].copy_from_slice(payload);
         // CRC-32/MPEG-2 over header + payload (TSR-TIG-01)
         let crc = crc32_mpeg2(&frame[..HDR_LEN + len]);
-        frame[HDR_LEN + len]     =  (crc        & 0xFF) as u8;
-        frame[HDR_LEN + len + 1] = ((crc >>  8) & 0xFF) as u8;
+        frame[HDR_LEN + len] = (crc & 0xFF) as u8;
+        frame[HDR_LEN + len + 1] = ((crc >> 8) & 0xFF) as u8;
         frame[HDR_LEN + len + 2] = ((crc >> 16) & 0xFF) as u8;
         frame[HDR_LEN + len + 3] = ((crc >> 24) & 0xFF) as u8;
         Ok(frame)
     }
 
     fn send_recv(&mut self, cmd: Cmd, payload: &[u8]) -> HsmResult<(Rsp, Vec<u8>)> {
+        if self.seq == u32::MAX {
+            return Err(HsmError::SequenceOverflow);
+        }
         let frame = self.build_frame(cmd, payload)?;
-        let port = self.port.as_mut().ok_or_else(|| HsmError::UsbError("not open".into()))?;
+        let port = self
+            .port
+            .as_mut()
+            .ok_or_else(|| HsmError::UsbError("not open".into()))?;
 
         // Write frame
         use std::io::Write;
         port.write_all(&frame)
             .map_err(|e| HsmError::UsbError(e.to_string()))?;
 
-        // Read fixed response header: [MAGIC:2][RSP:1][SEQ:1][LEN:2] = 6 bytes.
+        // Read fixed response header: [MAGIC:2][RSP:1][SEQ:4LE][LEN:2] = 9 bytes.
         let mut hdr = [0u8; HDR_LEN];
         read_exact(port, &mut hdr)?;
 
         if hdr[0] != MAGIC[0] || hdr[1] != MAGIC[1] {
             return Err(HsmError::UsbError("bad response magic".into()));
         }
-        let rsp_len = u16::from_le_bytes([hdr[4], hdr[5]]) as usize;
+        let rsp_len = u16::from_le_bytes([hdr[7], hdr[8]]) as usize;
         if rsp_len > MAX_PAYLOAD {
             return Err(HsmError::UsbError("response payload too large".into()));
         }
@@ -198,13 +208,12 @@ impl Inner {
             return Err(HsmError::CrcMismatch);
         }
 
-        // Check sequence echo
-        if hdr[3] != self.seq {
-            return Err(HsmError::UsbError(format!(
-                "seq mismatch: expected {} got {}", self.seq, hdr[3]
-            )));
+        // Check sequence echo (u32 LE at hdr[3..7])
+        let rsp_seq = u32::from_le_bytes([hdr[3], hdr[4], hdr[5], hdr[6]]);
+        if rsp_seq != self.seq {
+            return Err(HsmError::ProtocolError);
         }
-        self.seq = self.seq.wrapping_add(1);
+        self.seq += 1;
 
         let rsp = Rsp::try_from(hdr[2])
             .map_err(|_| HsmError::UsbError(format!("unknown response opcode {:#04x}", hdr[2])))?;
@@ -212,11 +221,11 @@ impl Inner {
 
         // Map error responses
         match rsp {
-            Rsp::ErrBadKey    => Err(HsmError::InvalidKeyHandle),
-            Rsp::ErrNotInit   => Err(HsmError::NotInitialized),
-            Rsp::ErrBadParam  => Err(HsmError::InvalidParam("bad parameter".into())),
-            Rsp::ErrCrypto    => Err(HsmError::CryptoFail("firmware crypto error".into())),
-            Rsp::ErrBadFrame  => Err(HsmError::UsbError("firmware rejected frame".into())),
+            Rsp::ErrBadKey => Err(HsmError::InvalidKeyHandle),
+            Rsp::ErrNotInit => Err(HsmError::NotInitialized),
+            Rsp::ErrBadParam => Err(HsmError::InvalidParam("bad parameter".into())),
+            Rsp::ErrCrypto => Err(HsmError::CryptoFail("firmware crypto error".into())),
+            Rsp::ErrBadFrame => Err(HsmError::UsbError("firmware rejected frame".into())),
             Rsp::ErrRateLimit => Err(HsmError::RateLimitExceeded),
             Rsp::ErrUnknownCmd => Err(HsmError::Unsupported),
             _ => Ok((rsp, rsp_payload)),
@@ -228,7 +237,8 @@ fn read_exact(port: &mut Box<dyn SerialPort + Send>, buf: &mut [u8]) -> HsmResul
     use std::io::Read;
     let mut pos = 0;
     while pos < buf.len() {
-        let n = port.read(&mut buf[pos..])
+        let n = port
+            .read(&mut buf[pos..])
             .map_err(|e| HsmError::UsbError(e.to_string()))?;
         if n == 0 {
             return Err(HsmError::UsbError("serial port closed".into()));
@@ -253,13 +263,19 @@ impl HardwareBackend {
     /// `port_path`: serial port to open (e.g. `/dev/ttyACM0`, `COM3`).
     pub fn new(port_path: impl Into<String>) -> Self {
         Self {
-            inner: Mutex::new(Inner { port: None, seq: 0, initialized: false }),
+            inner: Mutex::new(Inner {
+                port: None,
+                seq: 0,
+                initialized: false,
+            }),
             port_path: port_path.into(),
         }
     }
 
     fn lock(&self) -> HsmResult<std::sync::MutexGuard<'_, Inner>> {
-        self.inner.lock().map_err(|_| HsmError::UsbError("mutex poisoned".into()))
+        self.inner
+            .lock()
+            .map_err(|_| HsmError::UsbError("mutex poisoned".into()))
     }
 }
 
@@ -273,7 +289,7 @@ impl HsmBackend for HardwareBackend {
             .open_native()
             .map_err(|e| HsmError::UsbError(e.to_string()))?;
         g.port = Some(Box::new(port));
-        g.seq  = 0x00;
+        g.seq = 0x00;
         let (rsp, _) = g.send_recv(Cmd::Init, &[])?;
         if rsp != Rsp::Ok {
             return Err(HsmError::UsbError("init failed".into()));
@@ -310,7 +326,9 @@ impl HsmBackend for HardwareBackend {
             return Err(HsmError::InvalidParam("data too large".into()));
         }
         let (_, digest) = self.lock()?.send_recv(Cmd::Sha256, data)?;
-        digest.try_into().map_err(|_| HsmError::UsbError("bad sha256 response length".into()))
+        digest
+            .try_into()
+            .map_err(|_| HsmError::UsbError("bad sha256 response length".into()))
     }
 
     fn hmac_sha256(&self, handle: KeyHandle, data: &[u8]) -> HsmResult<[u8; 32]> {
@@ -318,7 +336,8 @@ impl HsmBackend for HardwareBackend {
         payload.extend_from_slice(&handle.0.to_le_bytes());
         payload.extend_from_slice(data);
         let (_, mac) = self.lock()?.send_recv(Cmd::HmacSha256, &payload)?;
-        mac.try_into().map_err(|_| HsmError::UsbError("bad hmac response length".into()))
+        mac.try_into()
+            .map_err(|_| HsmError::UsbError("bad hmac response length".into()))
     }
 
     fn aes_gcm_encrypt(
@@ -336,7 +355,9 @@ impl HsmBackend for HardwareBackend {
         payload.extend_from_slice(plaintext);
         let (_, ct_tag) = self.lock()?.send_recv(Cmd::AesGcmEnc, &payload)?;
         if ct_tag.len() < 16 {
-            return Err(HsmError::UsbError("response too short for ciphertext+tag".into()));
+            return Err(HsmError::UsbError(
+                "response too short for ciphertext+tag".into(),
+            ));
         }
         let (ct, tag_slice) = ct_tag.split_at(ct_tag.len() - 16);
         let mut tag = [0u8; 16];
@@ -395,19 +416,22 @@ impl HsmBackend for HardwareBackend {
 
     fn key_generate(&mut self, key_type: KeyType) -> HsmResult<KeyHandle> {
         let kt_byte: u8 = match key_type {
-            KeyType::Aes256     => 0x01,
+            KeyType::Aes256 => 0x01,
             KeyType::HmacSha256 => 0x02,
-            KeyType::EccP256    => 0x03,
+            KeyType::EccP256 => 0x03,
         };
         let (_, data) = self.lock()?.send_recv(Cmd::KeyGenerate, &[kt_byte])?;
         if data.len() < 4 {
             return Err(HsmError::UsbError("bad key generate response".into()));
         }
-        Ok(KeyHandle(u32::from_le_bytes([data[0], data[1], data[2], data[3]])))
+        Ok(KeyHandle(u32::from_le_bytes([
+            data[0], data[1], data[2], data[3],
+        ])))
     }
 
     fn key_delete(&mut self, handle: KeyHandle) -> HsmResult<()> {
-        self.lock()?.send_recv(Cmd::KeyDelete, &handle.0.to_le_bytes())?;
+        self.lock()?
+            .send_recv(Cmd::KeyDelete, &handle.0.to_le_bytes())?;
         Ok(())
     }
 
@@ -422,9 +446,9 @@ impl HsmBackend for HardwareBackend {
         out_type: KeyType,
     ) -> HsmResult<KeyHandle> {
         let out_type_byte: u8 = match out_type {
-            KeyType::Aes256     => 0x01,
+            KeyType::Aes256 => 0x01,
             KeyType::HmacSha256 => 0x02,
-            KeyType::EccP256    => 0x03,
+            KeyType::EccP256 => 0x03,
         };
         let info_len = info.len() as u16;
         let mut payload = Vec::new();
@@ -437,7 +461,9 @@ impl HsmBackend for HardwareBackend {
         if data.len() < 4 {
             return Err(HsmError::UsbError("bad key derive response".into()));
         }
-        Ok(KeyHandle(u32::from_le_bytes([data[0], data[1], data[2], data[3]])))
+        Ok(KeyHandle(u32::from_le_bytes([
+            data[0], data[1], data[2], data[3],
+        ])))
     }
 
     fn ecdh_agree(&self, _handle: KeyHandle, _peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]> {

@@ -75,7 +75,9 @@ pub fn verify_activation_token(
 ) -> HsmResult<()> {
     // 1. Replay check.
     if token.counter <= last_counter {
-        ids.on_event(IdsEvent::ActivationRejected { reason: "counter replay" });
+        ids.on_event(IdsEvent::ActivationRejected {
+            reason: "counter replay",
+        });
         return Err(HsmError::ReplayDetected(token.counter, last_counter));
     }
 
@@ -88,24 +90,30 @@ pub fn verify_activation_token(
         ecdsa::{signature::hazmat::PrehashVerifier, VerifyingKey},
         PublicKey,
     };
-    let pk = PublicKey::from_sec1_bytes(authority_pk)
-        .map_err(|_| {
-            ids.on_event(IdsEvent::ActivationRejected { reason: "invalid authority key" });
-            HsmError::CryptoFail("invalid feature authority public key".into())
-        })?;
+    let pk = PublicKey::from_sec1_bytes(authority_pk).map_err(|_| {
+        ids.on_event(IdsEvent::ActivationRejected {
+            reason: "invalid authority key",
+        });
+        HsmError::CryptoFail("invalid feature authority public key".into())
+    })?;
     let vk = VerifyingKey::from(&pk);
 
     // 4. Parse DER signature.
-    let sig = p256::ecdsa::Signature::from_der(token.signature_der)
-        .map_err(|_| {
-            ids.on_event(IdsEvent::ActivationRejected { reason: "signature parse failed" });
-            HsmError::CryptoFail("malformed activation token signature".into())
-        })?;
+    let sig = p256::ecdsa::Signature::from_der(token.signature_der).map_err(|_| {
+        ids.on_event(IdsEvent::ActivationRejected {
+            reason: "signature parse failed",
+        });
+        HsmError::CryptoFail("malformed activation token signature".into())
+    })?;
 
     // 5. Verify.
     if vk.verify_prehash(&digest, &sig).is_err() {
-        ids.on_event(IdsEvent::ActivationRejected { reason: "signature invalid" });
-        return Err(HsmError::CryptoFail("activation token signature verification failed".into()));
+        ids.on_event(IdsEvent::ActivationRejected {
+            reason: "signature invalid",
+        });
+        return Err(HsmError::CryptoFail(
+            "activation token signature verification failed".into(),
+        ));
     }
 
     Ok(())

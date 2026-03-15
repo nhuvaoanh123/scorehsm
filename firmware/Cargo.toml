@@ -5,29 +5,28 @@ edition = "2021"
 description = "HSM firmware for STM32L552 Nucleo — Embassy async, TrustZone, USB CDC"
 license = "Apache-2.0"
 
-# Embassy: use git refs — STM32 HAL not yet stable on crates.io for l552
+# Embassy: pinned to specific SHA for reproducible builds
 [dependencies]
-embassy-executor  = { git = "https://github.com/embassy-rs/embassy", features = [
-    "arch-cortex-m",
+embassy-executor  = { git = "https://github.com/embassy-rs/embassy", rev = "088d0cfb", features = [
+    "platform-cortex-m",
     "executor-thread",
-    "integrated-timers",
 ] }
-embassy-stm32     = { git = "https://github.com/embassy-rs/embassy", features = [
+embassy-stm32     = { git = "https://github.com/embassy-rs/embassy", rev = "088d0cfb", features = [
     "stm32l552ze",
     "time-driver-any",
-    "memory-x",
     "unstable-pac",
     "exti",
-] }
-embassy-time      = { git = "https://github.com/embassy-rs/embassy", features = [
+    "dual-bank",
+] }  # memory-x removed: custom memory.x / memory-tz.x provided via build.rs
+embassy-time      = { git = "https://github.com/embassy-rs/embassy", rev = "088d0cfb", features = [
     "tick-hz-32_768",
 ] }
-embassy-sync      = { git = "https://github.com/embassy-rs/embassy" }
-embassy-usb       = { git = "https://github.com/embassy-rs/embassy" }
-embassy-futures   = { git = "https://github.com/embassy-rs/embassy" }
+embassy-sync      = { git = "https://github.com/embassy-rs/embassy", rev = "088d0cfb" }
+embassy-usb       = { git = "https://github.com/embassy-rs/embassy", rev = "088d0cfb" }
+embassy-futures   = { git = "https://github.com/embassy-rs/embassy", rev = "088d0cfb" }
 
 # Cortex-M runtime
-cortex-m      = { version = "0.7", features = ["critical-section-single-core", "cm33"] }
+cortex-m      = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt   = "0.7"
 
 # Debug / logging
@@ -45,6 +44,10 @@ chacha20poly1305 = { version = "0.10", default-features = false }
 rand_core      = { version = "0.6", default-features = false }
 zeroize        = { version = "1", default-features = false, features = ["derive"] }
 heapless       = "0.8"
+
+[features]
+default = []
+trustzone = []     # Enable TrustZone: S-world flash alias, SAU config, SRAM2 isolation
 
 [profile.release]
 codegen-units = 1

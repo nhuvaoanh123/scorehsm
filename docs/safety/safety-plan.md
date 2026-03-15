@@ -21,7 +21,7 @@ This plan is the top-level safety governance document for the `scorehsm-host` Ru
 **In scope:**
 - `scorehsm-host` Rust library — the `HsmBackend` trait, `SoftwareBackend` implementation, `HardwareBackend` implementation, and all supporting modules (key management, session layer, IDS hook, USB CDC frame protocol, TLS integration)
 - L55 firmware — the Non-Secure USB command dispatcher, TrustZone NSC gateway (CMSE veneers), and Secure-world cryptographic driver layer (AES, PKA, HASH, RNG, key store)
-- The USB CDC binary frame protocol (CRC-16, sequence number, opcode definitions) as an internal interface
+- The USB CDC binary frame protocol (CRC-32/MPEG-2, u32 sequence number, opcode definitions) as an internal interface
 
 **Out of scope:**
 - The Linux OS on the Raspberry Pi HPC proxy (assumed correct and appropriately hardened by the integrator)

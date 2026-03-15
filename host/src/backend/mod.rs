@@ -105,6 +105,9 @@ pub trait HsmBackend: Send + Sync {
     /// to indicate that hardware secure boot is not applicable.
     /// The hardware backend queries the firmware for the actual boot result.
     fn boot_status(&self) -> HsmResult<BootStatus> {
-        Ok(BootStatus { verified: false, firmware_version: 0 })
+        Ok(BootStatus {
+            verified: false,
+            firmware_version: 0,
+        })
     }
 }

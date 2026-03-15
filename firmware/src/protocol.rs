@@ -2,16 +2,14 @@
 //!
 //! Frame format (§2.1 of architecture.md):
 //! ```text
-//! [MAGIC:2][CMD:1][SEQ:1][LEN:2LE][PAYLOAD:LEN][CRC16:2LE]
+//! [MAGIC:2][CMD:1][SEQ:4LE][LEN:2LE][PAYLOAD:LEN][CRC32:4LE]
 //! ```
 //! MAGIC = 0xAB 0xCD for commands; 0xCD 0xAB would be a corrupted frame.
-//! CRC-16/CCITT over bytes [0 .. 6+LEN-1], poly 0x1021, init 0xFFFF.
-
-use heapless::Vec;
+//! CRC-32/MPEG-2 over bytes [0 .. 9+LEN-1], poly 0x04C11DB7, init 0xFFFFFFFF.
 
 pub const MAGIC: [u8; 2]  = [0xAB, 0xCD];
 pub const MAX_PAYLOAD: usize = 512;
-pub const FRAME_OVERHEAD: usize = 8; // MAGIC(2)+CMD(1)+SEQ(1)+LEN(2)+CRC(2)
+pub const FRAME_OVERHEAD: usize = 13; // MAGIC(2)+CMD(1)+SEQ(4)+LEN(2)+CRC32(4)
 pub const MAX_FRAME: usize = FRAME_OVERHEAD + MAX_PAYLOAD;
 
 // ── Opcodes ──────────────────────────────────────────────────────────────────
@@ -79,16 +77,19 @@ pub enum Rsp {
     ErrRateLimit   = 0xF6,
 }
 
-// ── CRC-16/CCITT ─────────────────────────────────────────────────────────────
+// ── CRC-32/MPEG-2 (TSR-TIG-01, HSM-REQ-050) ────────────────────────────────
+//
+// Parameters: poly=0x04C11DB7, init=0xFFFFFFFF, RefIn=false, RefOut=false,
+// XorOut=0x00000000.  KAT: crc32_mpeg2(&[0x00;4]) == 0x2144_DF1C.
 
-/// CRC-16/CCITT: poly=0x1021, init=0xFFFF, no reflection.
-pub fn crc16(data: &[u8]) -> u16 {
-    let mut crc: u16 = 0xFFFF;
+/// CRC-32/MPEG-2: poly=0x04C11DB7, init=0xFFFFFFFF, no reflection.
+pub fn crc32_mpeg2(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
     for &b in data {
-        crc ^= (b as u16) << 8;
+        crc ^= (b as u32) << 24;
         for _ in 0..8 {
-            if crc & 0x8000 != 0 {
-                crc = (crc << 1) ^ 0x1021;
+            if crc & 0x8000_0000 != 0 {
+                crc = (crc << 1) ^ 0x04C1_1DB7;
             } else {
                 crc <<= 1;
             }
@@ -101,7 +102,7 @@ pub fn crc16(data: &[u8]) -> u16 {
 
 pub struct Frame<'a> {
     pub cmd: Cmd,
-    pub seq: u8,
+    pub seq: u32,
     pub payload: &'a [u8],
 }
 
@@ -123,8 +124,8 @@ pub fn parse_frame(buf: &[u8]) -> Result<Frame<'_>, ParseError> {
         return Err(ParseError::BadMagic);
     }
     let cmd_byte = buf[2];
-    let seq      = buf[3];
-    let len      = u16::from_le_bytes([buf[4], buf[5]]) as usize;
+    let seq      = u32::from_le_bytes([buf[3], buf[4], buf[5], buf[6]]);
+    let len      = u16::from_le_bytes([buf[7], buf[8]]) as usize;
     if len > MAX_PAYLOAD {
         return Err(ParseError::BadLength);
     }
@@ -132,22 +133,22 @@ pub fn parse_frame(buf: &[u8]) -> Result<Frame<'_>, ParseError> {
     if buf.len() < total {
         return Err(ParseError::TooShort);
     }
-    let frame_data = &buf[..total - 2];
-    let crc_bytes  = &buf[total - 2..total];
-    let expected   = crc16(frame_data);
-    let received   = u16::from_le_bytes([crc_bytes[0], crc_bytes[1]]);
+    let frame_data = &buf[..total - 4];
+    let crc_bytes  = &buf[total - 4..total];
+    let expected   = crc32_mpeg2(frame_data);
+    let received   = u32::from_le_bytes([crc_bytes[0], crc_bytes[1], crc_bytes[2], crc_bytes[3]]);
     if expected != received {
         return Err(ParseError::BadCrc);
     }
     let cmd = Cmd::try_from(cmd_byte).map_err(|_| ParseError::UnknownCmd)?;
-    Ok(Frame { cmd, seq, payload: &buf[6..6 + len] })
+    Ok(Frame { cmd, seq, payload: &buf[9..9 + len] })
 }
 
 /// Serialise a response into `out`. Returns the number of bytes written.
 /// Returns None if `payload` is too large or `out` is too small.
 pub fn build_response(
     rsp: Rsp,
-    seq: u8,
+    seq: u32,
     payload: &[u8],
     out: &mut [u8],
 ) -> Option<usize> {
@@ -162,13 +163,19 @@ pub fn build_response(
     out[0] = MAGIC[0];
     out[1] = MAGIC[1];
     out[2] = rsp as u8;
-    out[3] = seq;
-    out[4] = (len & 0xFF) as u8;
-    out[5] = ((len >> 8) & 0xFF) as u8;
-    out[6..6 + len].copy_from_slice(payload);
-    let crc = crc16(&out[..6 + len]);
-    out[6 + len]     = (crc & 0xFF) as u8;
-    out[6 + len + 1] = ((crc >> 8) & 0xFF) as u8;
+    let seq_bytes = seq.to_le_bytes();
+    out[3] = seq_bytes[0];
+    out[4] = seq_bytes[1];
+    out[5] = seq_bytes[2];
+    out[6] = seq_bytes[3];
+    out[7] = (len & 0xFF) as u8;
+    out[8] = ((len >> 8) & 0xFF) as u8;
+    out[9..9 + len].copy_from_slice(payload);
+    let crc = crc32_mpeg2(&out[..9 + len]);
+    out[9 + len]     =  (crc        & 0xFF) as u8;
+    out[9 + len + 1] = ((crc >>  8) & 0xFF) as u8;
+    out[9 + len + 2] = ((crc >> 16) & 0xFF) as u8;
+    out[9 + len + 3] = ((crc >> 24) & 0xFF) as u8;
     Some(total)
 }
 
@@ -179,49 +186,64 @@ mod tests {
     use super::*;
 
     #[test]
-    fn crc16_empty() {
-        // CRC-16/CCITT("") = 0xFFFF
-        assert_eq!(crc16(&[]), 0xFFFF);
+    fn crc32_mpeg2_empty() {
+        // CRC-32/MPEG-2("") = 0xFFFFFFFF (init value, no data processed)
+        assert_eq!(crc32_mpeg2(&[]), 0xFFFF_FFFF);
     }
 
     #[test]
-    fn crc16_known() {
-        // CRC-16/CCITT("123456789") = 0x29B1
-        assert_eq!(crc16(b"123456789"), 0x29B1);
+    fn crc32_mpeg2_known_answer() {
+        // KAT from TSR-TIG-01: CRC-32/MPEG-2 of four zero bytes = 0x2144DF1C
+        assert_eq!(crc32_mpeg2(&[0x00; 4]), 0x2144_DF1C);
     }
 
     #[test]
     fn roundtrip_init() {
-        // Build a CMD_INIT frame by hand
+        // Build a CMD_INIT frame by hand with CRC-32/MPEG-2 and u32 seq
         let mut frame_buf = [0u8; MAX_FRAME];
         let payload: &[u8] = &[];
         let total = FRAME_OVERHEAD + payload.len();
         frame_buf[0] = MAGIC[0];
         frame_buf[1] = MAGIC[1];
         frame_buf[2] = Cmd::Init as u8;
-        frame_buf[3] = 0x01; // seq
-        frame_buf[4] = 0x00; // len lo
-        frame_buf[5] = 0x00; // len hi
-        let crc = crc16(&frame_buf[..6]);
-        frame_buf[6] = (crc & 0xFF) as u8;
-        frame_buf[7] = ((crc >> 8) & 0xFF) as u8;
+        // SEQ = 0x00000001 (4 bytes LE)
+        frame_buf[3] = 0x01;
+        frame_buf[4] = 0x00;
+        frame_buf[5] = 0x00;
+        frame_buf[6] = 0x00;
+        // LEN = 0x0000
+        frame_buf[7] = 0x00;
+        frame_buf[8] = 0x00;
+        let crc = crc32_mpeg2(&frame_buf[..9]);
+        frame_buf[9]  =  (crc        & 0xFF) as u8;
+        frame_buf[10] = ((crc >>  8) & 0xFF) as u8;
+        frame_buf[11] = ((crc >> 16) & 0xFF) as u8;
+        frame_buf[12] = ((crc >> 24) & 0xFF) as u8;
 
         let f = parse_frame(&frame_buf[..total]).unwrap();
         assert_eq!(f.cmd, Cmd::Init);
-        assert_eq!(f.seq, 0x01);
+        assert_eq!(f.seq, 0x00000001);
         assert!(f.payload.is_empty());
     }
 
     #[test]
     fn bad_magic_rejected() {
-        let buf = [0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xFF, 0xFF];
+        // 13 bytes minimum for FRAME_OVERHEAD
+        let buf = [0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         assert_eq!(parse_frame(&buf), Err(ParseError::BadMagic));
     }
 
     #[test]
     fn bad_crc_rejected() {
-        let mut buf = [0xAB, 0xCD, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00];
-        buf[6] = 0xDE; buf[7] = 0xAD; // wrong CRC
+        let mut buf = [0u8; 13];
+        buf[0] = 0xAB;
+        buf[1] = 0xCD;
+        buf[2] = 0x01; // CMD = Init
+        // SEQ = 0 (4 bytes), LEN = 0 (2 bytes), CRC = wrong (4 bytes)
+        buf[9]  = 0xDE;
+        buf[10] = 0xAD;
+        buf[11] = 0xBE;
+        buf[12] = 0xEF;
         assert_eq!(parse_frame(&buf), Err(ParseError::BadCrc));
     }
 }

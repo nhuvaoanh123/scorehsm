@@ -61,16 +61,20 @@ pub struct MockFaultConfig {
 /// Key material stored in the mock HSM key store.
 /// ZeroizeOnDrop: satisfies HSM-REQ-066 for the software side of the mock.
 pub(crate) struct MockKeySlot {
-    key_type: u8,        // encoded KeyType discriminant
-    material: Vec<u8>,   // raw key bytes — zeroized on drop
+    key_type: u8,      // encoded KeyType discriminant
+    material: Vec<u8>, // raw key bytes — zeroized on drop
 }
 
 impl Zeroize for MockKeySlot {
-    fn zeroize(&mut self) { self.material.zeroize(); }
+    fn zeroize(&mut self) {
+        self.material.zeroize();
+    }
 }
 
 impl Drop for MockKeySlot {
-    fn drop(&mut self) { self.zeroize(); }
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl ZeroizeOnDrop for MockKeySlot {}
@@ -88,12 +92,12 @@ const _: fn() = || {
 ///
 /// Thread-safe: all mutable state is protected by an internal Mutex.
 pub struct MockHardwareBackend {
-    faults:      MockFaultConfig,
-    call_count:  AtomicU32,
+    faults: MockFaultConfig,
+    call_count: AtomicU32,
     seq_counter: AtomicU32,
     next_handle: AtomicU32,
     initialized: AtomicBool,
-    keys:        Mutex<HashMap<u32, MockKeySlot>>, // keyed by raw handle id
+    keys: Mutex<HashMap<u32, MockKeySlot>>, // keyed by raw handle id
 }
 
 impl MockHardwareBackend {
@@ -101,11 +105,11 @@ impl MockHardwareBackend {
     pub fn new(faults: MockFaultConfig) -> Self {
         Self {
             faults,
-            call_count:  AtomicU32::new(0),
+            call_count: AtomicU32::new(0),
             seq_counter: AtomicU32::new(1),
             next_handle: AtomicU32::new(1),
             initialized: AtomicBool::new(false),
-            keys:        Mutex::new(HashMap::new()),
+            keys: Mutex::new(HashMap::new()),
         }
     }
 
@@ -162,9 +166,15 @@ impl MockHardwareBackend {
     /// Resolve a key handle to its stored material (internal — does NOT export key).
     /// No key bytes are returned through the public API (HSM-REQ-067).
     pub(crate) fn resolve_key(&self, handle: KeyHandle) -> HsmResult<MockKeySlot> {
-        let keys = self.keys.lock().map_err(|_| HsmError::CryptoFail("lock poisoned".into()))?;
+        let keys = self
+            .keys
+            .lock()
+            .map_err(|_| HsmError::CryptoFail("lock poisoned".into()))?;
         let slot = keys.get(&handle.0).ok_or(HsmError::InvalidKeyHandle)?;
-        Ok(MockKeySlot { key_type: slot.key_type, material: slot.material.clone() })
+        Ok(MockKeySlot {
+            key_type: slot.key_type,
+            material: slot.material.clone(),
+        })
     }
 }
 
@@ -193,12 +203,16 @@ impl HsmBackend for MockHardwareBackend {
         self.transport_round_trip()?;
         let id = self.next_handle.fetch_add(1, Ordering::SeqCst);
         let material = match key_type {
-            KeyType::Aes256     => vec![0xA5u8; 32],
+            KeyType::Aes256 => vec![0xA5u8; 32],
             KeyType::HmacSha256 => vec![0x5Au8; 32],
-            KeyType::EccP256    => vec![0x11u8; 32],
+            KeyType::EccP256 => vec![0x11u8; 32],
         };
-        let slot = MockKeySlot { key_type: key_type as u8, material };
-        self.keys.lock()
+        let slot = MockKeySlot {
+            key_type: key_type as u8,
+            material,
+        };
+        self.keys
+            .lock()
             .map_err(|_| HsmError::CryptoFail("lock poisoned".into()))?
             .insert(id, slot);
         Ok(KeyHandle(id))
@@ -213,13 +227,20 @@ impl HsmBackend for MockHardwareBackend {
         };
         if material.len() != expected_len {
             return Err(HsmError::InvalidParam(format!(
-                "expected {} bytes for {:?}, got {}", expected_len, key_type, material.len()
+                "expected {} bytes for {:?}, got {}",
+                expected_len,
+                key_type,
+                material.len()
             )));
         }
         self.transport_round_trip()?;
         let id = self.next_handle.fetch_add(1, Ordering::SeqCst);
-        let slot = MockKeySlot { key_type: key_type as u8, material: material.to_vec() };
-        self.keys.lock()
+        let slot = MockKeySlot {
+            key_type: key_type as u8,
+            material: material.to_vec(),
+        };
+        self.keys
+            .lock()
             .map_err(|_| HsmError::CryptoFail("lock poisoned".into()))?
             .insert(id, slot);
         Ok(KeyHandle(id))
@@ -227,7 +248,9 @@ impl HsmBackend for MockHardwareBackend {
 
     fn key_delete(&mut self, handle: KeyHandle) -> HsmResult<()> {
         self.transport_round_trip()?;
-        let mut keys = self.keys.lock()
+        let mut keys = self
+            .keys
+            .lock()
             .map_err(|_| HsmError::CryptoFail("lock poisoned".into()))?;
         // Remove drops the MockKeySlot, which calls Drop::drop → zeroize (HSM-REQ-066)
         keys.remove(&handle.0).ok_or(HsmError::InvalidKeyHandle)?;
@@ -379,8 +402,12 @@ impl HsmBackend for MockHardwareBackend {
         let derived = hasher.finalize().to_vec();
 
         let id = self.next_handle.fetch_add(1, Ordering::SeqCst);
-        let new_slot = MockKeySlot { key_type: out_type as u8, material: derived };
-        self.keys.lock()
+        let new_slot = MockKeySlot {
+            key_type: out_type as u8,
+            material: derived,
+        };
+        self.keys
+            .lock()
             .map_err(|_| HsmError::CryptoFail("lock poisoned".into()))?
             .insert(id, new_slot);
         Ok(KeyHandle(id))
@@ -400,7 +427,10 @@ impl HsmBackend for MockHardwareBackend {
 
     fn boot_status(&self) -> HsmResult<BootStatus> {
         // Mock: simulate verified secure boot
-        Ok(BootStatus { verified: true, firmware_version: 1 })
+        Ok(BootStatus {
+            verified: true,
+            firmware_version: 1,
+        })
     }
 }
 
@@ -423,8 +453,11 @@ mod tests {
         };
         let mut mock = MockHardwareBackend::new(config);
         let result = mock.init();
-        assert!(matches!(result, Err(HsmError::CrcMismatch)),
-            "expected CrcMismatch, got {:?}", result);
+        assert!(
+            matches!(result, Err(HsmError::CrcMismatch)),
+            "expected CrcMismatch, got {:?}",
+            result
+        );
     }
 
     // HSM-REQ-051: sequence number mismatch → ProtocolError
@@ -436,8 +469,11 @@ mod tests {
         };
         let mut mock = MockHardwareBackend::new(config);
         let result = mock.init();
-        assert!(matches!(result, Err(HsmError::ProtocolError)),
-            "expected ProtocolError, got {:?}", result);
+        assert!(
+            matches!(result, Err(HsmError::ProtocolError)),
+            "expected ProtocolError, got {:?}",
+            result
+        );
     }
 
     // HSM-REQ-052: timeout injection → HsmError::Timeout
@@ -449,8 +485,11 @@ mod tests {
         };
         let mut mock = MockHardwareBackend::new(config);
         let result = mock.init();
-        assert!(matches!(result, Err(HsmError::Timeout)),
-            "expected Timeout, got {:?}", result);
+        assert!(
+            matches!(result, Err(HsmError::Timeout)),
+            "expected Timeout, got {:?}",
+            result
+        );
     }
 
     // HSM-REQ-063: hardware fault opcode → HsmError::HardwareFault
@@ -462,8 +501,11 @@ mod tests {
         };
         let mut mock = MockHardwareBackend::new(config);
         let result = mock.init();
-        assert!(matches!(result, Err(HsmError::HardwareFault)),
-            "expected HardwareFault, got {:?}", result);
+        assert!(
+            matches!(result, Err(HsmError::HardwareFault)),
+            "expected HardwareFault, got {:?}",
+            result
+        );
     }
 
     // HSM-REQ-067: no key export — key_import returns handle, not material
@@ -488,8 +530,11 @@ mod tests {
         let (ct, _tag) = mock.aes_gcm_encrypt(handle, &params, b"hello").unwrap();
         let bad_tag = [0xFFu8; 16]; // wrong tag
         let result = mock.aes_gcm_decrypt(handle, &params, &ct, &bad_tag);
-        assert!(matches!(result, Err(HsmError::AuthenticationFailed)),
-            "expected AuthenticationFailed, got {:?}", result);
+        assert!(
+            matches!(result, Err(HsmError::AuthenticationFailed)),
+            "expected AuthenticationFailed, got {:?}",
+            result
+        );
     }
 
     // HSM-REQ-056: HKDF with empty info string → InvalidArgument
@@ -499,8 +544,11 @@ mod tests {
         mock.init().unwrap();
         let base = mock.key_generate(KeyType::Aes256).unwrap();
         let result = mock.key_derive(base, b"", KeyType::HmacSha256);
-        assert!(matches!(result, Err(HsmError::InvalidArgument)),
-            "expected InvalidArgument, got {:?}", result);
+        assert!(
+            matches!(result, Err(HsmError::InvalidArgument)),
+            "expected InvalidArgument, got {:?}",
+            result
+        );
     }
 
     // HSM-REQ-073: constant-time verification — wrong signature rejected

@@ -13,10 +13,7 @@
 //! | HSM-REQ-045        | MET     | Compile-time cfg warning when hw-backend absent    |
 //!
 //! HSM-REQ-045: compile-time warning when built without hw-backend.
-#![cfg_attr(
-    not(feature = "hw-backend"),
-    allow(unused)
-)]
+#![cfg_attr(not(feature = "hw-backend"), allow(unused))]
 
 use std::collections::HashMap;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -155,35 +152,28 @@ impl HsmBackend for SoftwareBackend {
         // ─────────────────────────────────────────────────────────────────────
         let km = match key_type {
             KeyType::Aes256 => {
-                let bytes: [u8; 32] = material
-                    .try_into()
-                    .map_err(|_| HsmError::InvalidParam(
-                        "AES-256 key must be exactly 32 bytes".into()
-                    ))?;
+                let bytes: [u8; 32] = material.try_into().map_err(|_| {
+                    HsmError::InvalidParam("AES-256 key must be exactly 32 bytes".into())
+                })?;
                 KeyMaterial::Aes256(bytes)
             }
             KeyType::HmacSha256 => {
-                let bytes: [u8; 32] = material
-                    .try_into()
-                    .map_err(|_| HsmError::InvalidParam(
-                        "HMAC-SHA256 key must be exactly 32 bytes".into()
-                    ))?;
+                let bytes: [u8; 32] = material.try_into().map_err(|_| {
+                    HsmError::InvalidParam("HMAC-SHA256 key must be exactly 32 bytes".into())
+                })?;
                 KeyMaterial::HmacSha256(bytes)
             }
             KeyType::EccP256 => {
-                let bytes: [u8; 32] = material
-                    .try_into()
-                    .map_err(|_| HsmError::InvalidParam(
-                        "P-256 scalar must be exactly 32 bytes".into()
-                    ))?;
+                let bytes: [u8; 32] = material.try_into().map_err(|_| {
+                    HsmError::InvalidParam("P-256 scalar must be exactly 32 bytes".into())
+                })?;
                 // Validate the scalar represents a valid P-256 private key
                 // before storing it.  A zero scalar and scalars >= the curve
                 // order are rejected here rather than producing a silently
                 // broken key handle.
-                p256::SecretKey::from_bytes(&bytes.into())
-                    .map_err(|_| HsmError::InvalidParam(
-                        "material is not a valid P-256 scalar".into()
-                    ))?;
+                p256::SecretKey::from_bytes(&bytes.into()).map_err(|_| {
+                    HsmError::InvalidParam("material is not a valid P-256 scalar".into())
+                })?;
                 KeyMaterial::EccP256(bytes)
             }
         };
@@ -196,7 +186,9 @@ impl HsmBackend for SoftwareBackend {
         self.check_init()?;
         // ZeroizeOnDrop fires when `remove` drops the evicted `KeyMaterial`.
         // HSM-REQ-043: key bytes are overwritten with zeros before the slot is freed.
-        self.keys.remove(&handle.0).ok_or(HsmError::InvalidKeyHandle)?;
+        self.keys
+            .remove(&handle.0)
+            .ok_or(HsmError::InvalidKeyHandle)?;
         Ok(())
     }
 
@@ -227,8 +219,8 @@ impl HsmBackend for SoftwareBackend {
         };
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
-        let mut mac = Hmac::<Sha256>::new_from_slice(raw)
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(raw).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         mac.update(data);
         Ok(mac.finalize().into_bytes().into())
     }
@@ -249,10 +241,13 @@ impl HsmBackend for SoftwareBackend {
             aead::{Aead, KeyInit, Payload},
             Aes256Gcm, Nonce,
         };
-        let cipher = Aes256Gcm::new_from_slice(raw)
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        let cipher =
+            Aes256Gcm::new_from_slice(raw).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         let nonce = Nonce::from_slice(params.iv);
-        let payload = Payload { msg: plaintext, aad: params.aad };
+        let payload = Payload {
+            msg: plaintext,
+            aad: params.aad,
+        };
         let result = cipher
             .encrypt(nonce, payload)
             .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
@@ -280,13 +275,16 @@ impl HsmBackend for SoftwareBackend {
             aead::{Aead, KeyInit, Payload},
             Aes256Gcm, Nonce,
         };
-        let cipher = Aes256Gcm::new_from_slice(raw)
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        let cipher =
+            Aes256Gcm::new_from_slice(raw).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         let nonce = Nonce::from_slice(params.iv);
         // Reconstruct ciphertext+tag as aes-gcm expects
         let mut ct_with_tag = ciphertext.to_vec();
         ct_with_tag.extend_from_slice(tag);
-        let payload = Payload { msg: &ct_with_tag, aad: params.aad };
+        let payload = Payload {
+            msg: &ct_with_tag,
+            aad: params.aad,
+        };
         cipher
             .decrypt(nonce, payload)
             .map_err(|_| HsmError::TagMismatch)
@@ -300,13 +298,16 @@ impl HsmBackend for SoftwareBackend {
             _ => return Err(HsmError::InvalidKeyHandle),
         };
         use p256::ecdsa::{signature::hazmat::PrehashSigner, SigningKey};
-        let signing_key = SigningKey::from_bytes(raw.into())
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        let signing_key =
+            SigningKey::from_bytes(raw.into()).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         let sig: p256::ecdsa::Signature = signing_key
             .sign_prehash(digest)
             .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         let (r_bytes, s_bytes) = sig.split_bytes();
-        Ok(EcdsaSignature { r: r_bytes.into(), s: s_bytes.into() })
+        Ok(EcdsaSignature {
+            r: r_bytes.into(),
+            s: s_bytes.into(),
+        })
     }
 
     fn ecdsa_verify(
@@ -321,9 +322,11 @@ impl HsmBackend for SoftwareBackend {
             KeyMaterial::EccP256(k) => k,
             _ => return Err(HsmError::InvalidKeyHandle),
         };
-        use p256::ecdsa::{signature::hazmat::PrehashVerifier, Signature, SigningKey, VerifyingKey};
-        let signing_key = SigningKey::from_bytes(raw.into())
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        use p256::ecdsa::{
+            signature::hazmat::PrehashVerifier, Signature, SigningKey, VerifyingKey,
+        };
+        let signing_key =
+            SigningKey::from_bytes(raw.into()).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         let verifying_key = VerifyingKey::from(&signing_key);
         let sig = Signature::from_scalars(signature.r, signature.s)
             .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
@@ -370,23 +373,21 @@ impl HsmBackend for SoftwareBackend {
             KeyMaterial::EccP256(k) => k,
             _ => return Err(HsmError::InvalidKeyHandle),
         };
-        use p256::{
-            elliptic_curve::sec1::FromEncodedPoint,
-            EncodedPoint, PublicKey, SecretKey,
-        };
+        use p256::{elliptic_curve::sec1::FromEncodedPoint, EncodedPoint, PublicKey, SecretKey};
         // Reconstruct peer public key from uncompressed 64-byte representation
         // peer_pub is [x: 32 bytes || y: 32 bytes] without the 0x04 prefix
         let mut encoded = [0u8; 65];
         encoded[0] = 0x04;
         encoded[1..].copy_from_slice(peer_pub);
-        let ep = EncodedPoint::from_bytes(&encoded)
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        let ep =
+            EncodedPoint::from_bytes(encoded).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
         let peer_key = PublicKey::from_encoded_point(&ep)
             .into_option()
             .ok_or_else(|| HsmError::CryptoFail("invalid peer public key".into()))?;
-        let secret_key = SecretKey::from_bytes(raw.into())
-            .map_err(|e| HsmError::CryptoFail(e.to_string()))?;
-        let shared = p256::ecdh::diffie_hellman(secret_key.to_nonzero_scalar(), peer_key.as_affine());
+        let secret_key =
+            SecretKey::from_bytes(raw.into()).map_err(|e| HsmError::CryptoFail(e.to_string()))?;
+        let shared =
+            p256::ecdh::diffie_hellman(secret_key.to_nonzero_scalar(), peer_key.as_affine());
         let mut out = [0u8; 32];
         out.copy_from_slice(shared.raw_secret_bytes());
         Ok(out)

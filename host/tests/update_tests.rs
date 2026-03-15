@@ -46,10 +46,8 @@ impl IdsHook for RecordingIds {
 // ── Test key (deterministic scalar) ──────────────────────────────────────────
 
 const TEST_SK: [u8; 32] = [
-    0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,
-    0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,0x10,
-    0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,
-    0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f,0x20,
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+    0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
 ];
 
 /// Valid signature on a known image is accepted.
@@ -70,7 +68,7 @@ fn test_update_tampered_image_rejected() {
     let image = b"firmware_v2_payload";
     let sig = sign_image(image, &TEST_SK);
     let pk = pubkey_from_scalar(&TEST_SK);
-    let tampered = b"firmware_v2_payloax";  // one byte changed
+    let tampered = b"firmware_v2_payloax"; // one byte changed
 
     let ids = RecordingIds::default();
     let result = verify_update_image(tampered, &sig, &pk, 2, 1, &ids);
@@ -116,8 +114,8 @@ fn test_update_same_version_rejected() {
 fn test_update_wrong_key_rejected() {
     let image = b"firmware_v2_payload";
     let other_sk = [0x42u8; 32];
-    let sig = sign_image(image, &other_sk);    // signed with wrong key
-    let pk = pubkey_from_scalar(&TEST_SK);     // verification uses correct key
+    let sig = sign_image(image, &other_sk); // signed with wrong key
+    let pk = pubkey_from_scalar(&TEST_SK); // verification uses correct key
 
     let ids = RecordingIds::default();
     let result = verify_update_image(image, &sig, &pk, 2, 1, &ids);

@@ -5,8 +5,7 @@
 //! Feature-gated: `cargo test --features pqc`
 
 use scorehsm_host::pqc::{
-    mldsa_keygen, mldsa_sign, mldsa_verify,
-    mlkem_keygen, mlkem_encapsulate, mlkem_decapsulate,
+    mldsa_keygen, mldsa_sign, mldsa_verify, mlkem_decapsulate, mlkem_encapsulate, mlkem_keygen,
 };
 
 // ── ML-DSA (Dilithium-3) ──────────────────────────────────────────────────────
@@ -30,7 +29,10 @@ fn test_mldsa_wrong_message_rejected() {
     let message = b"correct message";
     let sig = mldsa_sign(&kp.secret_key, message).unwrap();
     let ok = mldsa_verify(&kp.public_key, b"tampered message", &sig).unwrap();
-    assert!(!ok, "ML-DSA signature must not verify against different message");
+    assert!(
+        !ok,
+        "ML-DSA signature must not verify against different message"
+    );
 }
 
 // ── ML-KEM (Kyber-768) ───────────────────────────────────────────────────────
@@ -42,9 +44,16 @@ fn test_mlkem_encap_decap_roundtrip() {
     let kp = mlkem_keygen();
     let (ciphertext, ss_enc) = mlkem_encapsulate(&kp.public_key).unwrap();
     let ss_dec = mlkem_decapsulate(&kp.secret_key, &ciphertext).unwrap();
-    assert_eq!(ss_enc, ss_dec, "ML-KEM shared secrets must match after encap/decap");
+    assert_eq!(
+        ss_enc, ss_dec,
+        "ML-KEM shared secrets must match after encap/decap"
+    );
     assert!(!ss_enc.is_empty(), "shared secret must not be empty");
-    assert_ne!(ss_enc, vec![0u8; ss_enc.len()], "shared secret must not be all-zero");
+    assert_ne!(
+        ss_enc,
+        vec![0u8; ss_enc.len()],
+        "shared secret must not be all-zero"
+    );
 }
 
 /// ML-KEM decapsulation with wrong ciphertext produces a different shared secret.
@@ -62,7 +71,10 @@ fn test_mlkem_wrong_ciphertext_different_secret() {
     // and must produce a different (random-looking) shared secret.
     match mlkem_decapsulate(&kp.secret_key, &bad_ct) {
         Ok(ss_bad) => {
-            assert_ne!(ss_bad, ss_correct, "wrong ciphertext must produce different shared secret");
+            assert_ne!(
+                ss_bad, ss_correct,
+                "wrong ciphertext must produce different shared secret"
+            );
         }
         Err(_) => {
             // Explicit rejection is also acceptable
