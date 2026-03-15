@@ -109,7 +109,7 @@ async fn main(_spawner: Spawner) {
     }
 
     // Initialise hardware RNG
-    let mut rng = Rng::new(p.RNG, Irqs);
+    let rng = Rng::new(p.RNG, Irqs);
 
     // USB FS device
     let driver = UsbDriver::new(p.USB, Irqs, p.PA12, p.PA11);
@@ -175,7 +175,7 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
 ) -> ! {
     let mut rx_buf = [0u8; MAX_FRAME];
     let mut tx_buf = [0u8; MAX_FRAME];
-    let mut rx_pos: usize = 0;
+    let mut rx_pos: usize;
     let mut initialized;
     let mut expected_seq: u32;
 
