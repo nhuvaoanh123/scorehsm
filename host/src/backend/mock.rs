@@ -267,7 +267,7 @@ impl HsmBackend for MockHardwareBackend {
     }
 
     fn sha256(&self, data: &[u8]) -> HsmResult<[u8; 32]> {
-        // Software SHA-256 — no transport round-trip (hash is computed locally in mock)
+        self.transport_round_trip()?;
         use sha2::Digest;
         let mut hasher = sha2::Sha256::new();
         hasher.update(data);

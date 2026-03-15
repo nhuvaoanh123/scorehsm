@@ -21,6 +21,8 @@ This report covers the `scorehsm-host` library software backend testing only. Ha
 
 **Rev 1.2 update (2026-03-15):** Phase 9 (CI + project files) and Phase 10 evidence collection complete. All 58 integration tests (SCORE-ITP) and 57 qualification tests (SCORE-QTE) are now implemented and passing. Total test count: 274 (54 unit + 58 ITP + 57 QTE + 104 feature/backend + 1 doc-test). CI pipeline (GitHub Actions) with 4 host jobs green (Test, Clippy, Format, Coverage). Clippy: 0 warnings. Coverage: lcov artifact generated in CI, text % pending extraction.
 
+**Rev 1.3 update (2026-03-15):** Gap analysis fix batch (35 items). Protocol alignment: ECDH opcode (0x0E) wired end-to-end (firmware dispatcher + host transport + hw.rs backend). KeyDerive bug fixed (base key lookup now uses `key_type()` instead of output type; EccP256 derivation unblocked). CRC-32/MPEG-2 deduplicated (hw.rs private copy deleted; single source in `safety.rs`). Session layer hardened: `sha256` now checks safe-state, `ecdh_agree` emits IDS event + rate limiting, `check_rate` reports actual rejection count. CI: `cargo audit` job added, `--features pqc` test step added, `continue-on-error` removed from firmware-check, coverage `fail_ci_if_error` set to true. Mock `sha256` now exercises transport round-trip. `onboard_comm.rs` `.expect()` calls replaced with `map_err`. SC-03 partial verification: Phase 10b HIL (3/3 tests) + ECDH now wired in hardware backend.
+
 ---
 
 ## 2. Scope of Verification

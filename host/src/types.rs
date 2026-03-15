@@ -6,7 +6,8 @@
 pub struct KeyHandle(pub u32);
 
 impl KeyHandle {
-    /// The invalid/uninitialized handle value.
+    /// The invalid/uninitialized handle value — API sentinel for "no key".
+    #[allow(dead_code)]
     pub const INVALID: Self = KeyHandle(0);
 }
 
@@ -26,12 +27,6 @@ pub enum KeyType {
 pub enum Algorithm {
     /// AES-256-GCM authenticated encryption.
     Aes256Gcm,
-    /// AES-256-CBC (HSM-REQ-003 — defined for algorithm agility; no `HsmBackend`
-    /// method in this version; reserved for future hardware protocol extension).
-    Aes256Cbc,
-    /// AES-256-CCM (HSM-REQ-004 — defined for algorithm agility; no `HsmBackend`
-    /// method in this version; reserved for future hardware protocol extension).
-    Aes256Ccm,
     /// HMAC-SHA256.
     HmacSha256,
     /// ECDSA with P-256.

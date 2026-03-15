@@ -29,6 +29,11 @@ pub enum IdsEvent {
         /// SHA-256 digest that was signed.
         digest: [u8; 32],
     },
+    /// An ECDH key agreement was performed.
+    EcdhAgreed {
+        /// Opaque handle of the ECDH private key.
+        handle: KeyHandle,
+    },
     /// An AES-GCM decryption authentication tag failed to verify.
     DecryptFailed {
         /// Opaque handle of the decryption key.

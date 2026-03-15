@@ -74,9 +74,9 @@ fn itp_safe_state_blocks_random() {
     assert!(matches!(result, Err(HsmError::SafeState)));
 }
 
-/// ITP-SSG-01-e: SHA-256 is NOT blocked by safe state (no key material).
+/// ITP-SSG-01-e: SHA-256 IS blocked by safe state (M-03 — all operations blocked).
 #[test]
-fn itp_safe_state_allows_sha256() {
+fn itp_safe_state_blocks_sha256() {
     let state = Arc::new(LibraryState::new());
     let s = {
         let b = SoftwareBackend::new();
@@ -86,8 +86,8 @@ fn itp_safe_state_allows_sha256() {
     };
 
     state.enter_safe_state("test trigger");
-    // sha256 does not check library state — it's a pure hash
-    assert!(s.sha256(b"data").is_ok());
+    let result = s.sha256(b"data");
+    assert!(matches!(result, Err(HsmError::SafeState)));
 }
 
 /// ITP-SSG-01-f: Recovery via reinit allows operations again.

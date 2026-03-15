@@ -86,16 +86,18 @@ pub fn ikev2_derive_keys<B: HsmBackend>(
     // prf(key=Ni|Nr, msg=shared_secret)
     use hmac::{Hmac, Mac};
     let mut prf = Hmac::<Sha256>::new_from_slice(&[nonce_i, nonce_r].concat())
-        .expect("HMAC accepts any key length");
+        .map_err(|_| crate::error::HsmError::CryptoFail("HMAC key init failed".into()))?;
     prf.update(&shared);
     let skeyseed: [u8; 32] = prf.finalize().into_bytes().into();
 
     // Step 3: prf+(SKEYSEED, Ni | Nr | SPIi | SPIr) → 5 × 32 = 160 bytes.
     // HKDF-Expand(PRK=SKEYSEED, info=Ni|Nr|SPIi|SPIr, L=160)
     let info: Vec<u8> = [nonce_i, nonce_r, spi_i.as_slice(), spi_r.as_slice()].concat();
-    let hk = Hkdf::<Sha256>::from_prk(&skeyseed).expect("SKEYSEED is 32 bytes — valid PRK");
+    let hk = Hkdf::<Sha256>::from_prk(&skeyseed)
+        .map_err(|_| crate::error::HsmError::CryptoFail("HKDF PRK init failed".into()))?;
     let mut okm = [0u8; 160];
-    hk.expand(&info, &mut okm).expect("160 bytes < 255*32");
+    hk.expand(&info, &mut okm)
+        .map_err(|_| crate::error::HsmError::CryptoFail("HKDF expand failed".into()))?;
 
     Ok(Ikev2KeyMaterial {
         sk_d: okm[0..32].try_into().unwrap(),
@@ -142,8 +144,10 @@ pub fn macsec_derive_mka_keys<B: HsmBackend>(
     let hk = Hkdf::<Sha256>::new(Some(cak_name), &cak_ikm);
     let mut ick = [0u8; 32];
     let mut kek = [0u8; 32];
-    hk.expand(b"MKA ICK", &mut ick).expect("32 bytes < 255*32");
-    hk.expand(b"MKA KEK", &mut kek).expect("32 bytes < 255*32");
+    hk.expand(b"MKA ICK", &mut ick)
+        .map_err(|_| crate::error::HsmError::CryptoFail("HKDF expand ICK failed".into()))?;
+    hk.expand(b"MKA KEK", &mut kek)
+        .map_err(|_| crate::error::HsmError::CryptoFail("HKDF expand KEK failed".into()))?;
 
     Ok(MacsecMkaKeys { ick, kek })
 }

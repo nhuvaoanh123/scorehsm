@@ -30,6 +30,7 @@ pub enum Cmd {
     KeyDerive   = 0x0B,
     KeyImport   = 0x0C,
     Capability  = 0x0D,
+    Ecdh        = 0x0E,
 }
 
 impl TryFrom<u8> for Cmd {
@@ -49,6 +50,7 @@ impl TryFrom<u8> for Cmd {
             0x0B => Ok(Cmd::KeyDerive),
             0x0C => Ok(Cmd::KeyImport),
             0x0D => Ok(Cmd::Capability),
+            0x0E => Ok(Cmd::Ecdh),
             _ => Err(()),
         }
     }

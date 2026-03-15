@@ -90,6 +90,7 @@ pub struct HsmSession {
     checksum: KeyStoreChecksum,
     clock: Arc<dyn Clock>,
     fail_count: u32,
+    rate_reject_count: u32,
 }
 
 impl HsmSession {
@@ -106,6 +107,7 @@ impl HsmSession {
             checksum: KeyStoreChecksum::new(),
             clock,
             fail_count: 0,
+            rate_reject_count: 0,
         }
     }
 
@@ -164,11 +166,12 @@ impl HsmSession {
     }
 
     /// Helper: check rate limit and emit IDS event on rejection.
-    fn check_rate(&self, op: &'static str) -> HsmResult<()> {
+    fn check_rate(&mut self, op: &'static str) -> HsmResult<()> {
         if let Err(HsmError::RateLimitExceeded) = self.rate.try_acquire(op) {
+            self.rate_reject_count += 1;
             self.ids.on_event(IdsEvent::RateLimitExceeded {
                 operation: op,
-                count: 0,
+                count: self.rate_reject_count,
             });
             return Err(HsmError::RateLimitExceeded);
         }
@@ -249,6 +252,7 @@ impl HsmSession {
 
     /// SHA-256 hash (no ownership check — hash doesn't use key material).
     pub fn sha256(&self, data: &[u8]) -> HsmResult<[u8; 32]> {
+        self.library_state.check_not_safe()?;
         self.backend.sha256(data)
     }
 
@@ -329,6 +333,9 @@ impl HsmSession {
     pub fn ecdh_agree(&mut self, handle: KeyHandle, peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]> {
         self.library_state.check_not_safe()?;
         self.assert_owned(handle)?;
-        self.backend.ecdh_agree(handle, peer_pub)
+        self.check_rate("ecdh")?;
+        let shared = self.backend.ecdh_agree(handle, peer_pub)?;
+        self.ids.on_event(IdsEvent::EcdhAgreed { handle });
+        Ok(shared)
     }
 }

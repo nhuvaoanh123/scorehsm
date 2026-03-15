@@ -48,9 +48,9 @@ For ASIL B, TCL-2 tools require validation evidence; TCL-3 tools require full qu
 
 **Validation evidence:** Unit tests (13/13 pass), integration tests (52 specified), CI runs on two independent platforms.
 
-**Note on nightly toolchain:** A nightly build is used because the `sha2` crate with `force-soft-compact` requires it for cross-compilation targets. The nightly build is pinned by `rust-toolchain.toml`. When a stable release of Rust 1.96.0 is available, migration is required. Until then, the nightly qualification is maintained by locking the exact commit (`1d8897a4e`).
+**Note on nightly toolchain:** A nightly build is used because the `sha2` crate with `force-soft-compact` requires it for cross-compilation targets. The nightly build is pinned by `rust-toolchain.toml` to exact version `1.96.0-nightly (1d8897a4e 2026-03-13)`. When a stable release of Rust 1.96.0 is available, migration is required. Until then, the nightly qualification is maintained by locking the exact commit (`1d8897a4e`).
 
-**Open item:** Pin `rust-toolchain.toml` to exact `1.96.0-nightly (1d8897a4e 2026-03-13)` and commit to repository. Status: **OPEN**.
+**Open item:** Pin `rust-toolchain.toml` to exact `1.96.0-nightly (1d8897a4e 2026-03-13)` and commit to repository. Status: **CLOSED** — exact nightly pin committed in `rust-toolchain.toml`.
 
 ---
 
@@ -140,7 +140,7 @@ Clippy is run with `-- -D warnings` (zero-warning policy). Validation demonstrat
 
 2. Known clippy KAT: introduce a deliberate `unused_variable` warning, verify clippy reports it, remove it.
 
-**Validation evidence:** CI log showing `0 warnings` from `cargo clippy -- -D warnings`. Status: **OPEN** (CI pipeline to be configured).
+**Validation evidence:** CI log showing `0 warnings` from `cargo clippy --workspace --all-targets --features "mock,certs" -- -D warnings`. The `host-clippy` job in `.github/workflows/ci.yml` runs this check on every push and PR to `main`. Status: **CLOSED** — CI evidence exists in `host-clippy` job (green as of 2026-03-15).
 
 ---
 

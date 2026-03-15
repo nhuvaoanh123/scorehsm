@@ -303,9 +303,9 @@ The following claims are not yet fully supported by evidence as of the date of t
 | HSM-REQ-044 | Frame length validation | Frame fuzzing on live L55 USB endpoint |
 | HSM-REQ-046 | Secure boot | Requires SWD readback of boot status register; signed vs. unsigned image test |
 
-**Status:** HIL CI rig is in development. HIL test plan is documented. Target completion: 2026-05-15 (OI-06 in safety-plan.md).
+**Status:** Phase 10b complete — 3/3 HIL tests passed (USB identity, AES-GCM 1000× encrypt/decrypt, TRNG 1MB entropy). ECDH opcode now wired end-to-end (firmware dispatcher + host hw.rs backend). 3/9 hardware-layer requirements partially verified (HSM-REQ-034, HSM-REQ-041, HSM-REQ-016). Full HIL CI rig completion target: 2026-05-15 (OI-06 in safety-plan.md).
 
-**Impact on G1:** G1 sub-claims G2 and G3 are partially undeveloped for hardware-isolation failure modes. The software-layer safety functions (SC-01 through SC-04, G2 software requirements, G3 software failure modes) are fully supported. The hardware boundary argument (SC-03 for `HardwareBackend`) is conditionally supported pending UC-01 completion.
+**Impact on G1:** G1 sub-claims G2 and G3 are partially undeveloped for hardware-isolation failure modes. The software-layer safety functions (SC-01 through SC-04, G2 software requirements, G3 software failure modes) are fully supported. The hardware boundary argument (SC-03 for `HardwareBackend`) is conditionally supported pending UC-01 completion. Phase 10b provides partial evidence for HSM-REQ-034, HSM-REQ-041, and HSM-REQ-016.
 
 ### UC-02 — Coverage Measurement on Linux CI
 

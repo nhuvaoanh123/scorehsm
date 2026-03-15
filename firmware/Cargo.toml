@@ -49,6 +49,7 @@ static_cell    = "2"
 [features]
 default = []
 trustzone = []     # Enable TrustZone: S-world flash alias, SAU config, SRAM2 isolation
+secure-build = ["trustzone"]  # Enable NSC veneer stubs for dual-image S/NS builds
 
 [profile.release]
 codegen-units = 1

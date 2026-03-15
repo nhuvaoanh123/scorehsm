@@ -654,10 +654,12 @@ fn qt_fsr10e_safe_state_blocks_all_ops() {
         s
     };
     let h = s.key_generate(KeyType::EccP256).unwrap();
+    let digest = s.sha256(b"msg").unwrap(); // compute before safe state
 
     state.enter_safe_state("qualification test trigger");
 
-    let digest = s.sha256(b"msg").unwrap(); // sha256 doesn't check state
+    // sha256 now also blocked in safe state (M-03 fix)
+    assert!(matches!(s.sha256(b"msg"), Err(HsmError::SafeState)));
     assert!(matches!(s.ecdsa_sign(h, &digest), Err(HsmError::SafeState)));
     assert!(matches!(
         s.key_generate(KeyType::Aes256),

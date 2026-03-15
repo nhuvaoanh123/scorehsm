@@ -505,40 +505,46 @@ fn dispatch(
         Cmd::KeyDerive => {
             // Payload: [base_handle:4][out_type:1][out_len:1][info_len:2][info...]
             if payload.len() < 8 { err!(Rsp::ErrBadParam); }
-            let base = KeyHandle(u32::from_le_bytes([
+            let base_handle = u32::from_le_bytes([
                 payload[0], payload[1], payload[2], payload[3],
-            ]));
+            ]);
             let out_type = payload[4];
             let out_len  = payload[5] as usize;
             let info_len = u16::from_le_bytes([payload[6], payload[7]]) as usize;
             if payload.len() < 8 + info_len { err!(Rsp::ErrBadParam); }
             if out_len > 32 || out_len == 0 { err!(Rsp::ErrBadParam); }
             let info = &payload[8..8 + info_len];
-            let kt = match KeyType::try_from(payload[4]) {
-                Ok(t) => t,
-                Err(_) => err!(Rsp::ErrBadParam),
-            };
-            let base_kt = match out_type {
+
+            // Output key type (what the derived key will be stored as)
+            let derived_type = match out_type {
                 0x01 => KeyType::Aes256,
                 0x02 => KeyType::HmacSha256,
+                0x03 => KeyType::EccP256,
                 _ => err!(Rsp::ErrBadParam),
             };
-            let _ = kt;
-            match ks.borrow(base, base_kt) {
+
+            // Look up base key by handle — use key_type() to get actual type
+            let base_type = match ks.key_type(KeyHandle(base_handle)) {
+                Some(t) => t,
                 None => err!(Rsp::ErrBadKey),
-                Some(key) => {
-                    let mut derived = [0u8; 32];
-                    if crypto::hkdf_sha256(key, None, info, &mut derived[..out_len]).is_err() {
-                        err!(Rsp::ErrCrypto);
-                    }
-                    // Store derived key in keystore
-                    match ks.store(base_kt, &derived[..out_len]) {
-                        None => err!(Rsp::ErrCrypto),
-                        Some(h) => {
-                            out.extend_from_slice(&h.0.to_le_bytes()).ok();
-                            return (Rsp::KeyHandle, out);
-                        }
-                    }
+            };
+            let base_key = match ks.borrow(KeyHandle(base_handle), base_type) {
+                Some(k) => k,
+                None => err!(Rsp::ErrBadKey),
+            };
+
+            // HKDF derive
+            let mut derived = [0u8; 32];
+            if crypto::hkdf_sha256(base_key, None, info, &mut derived[..out_len]).is_err() {
+                err!(Rsp::ErrCrypto);
+            }
+
+            // Store derived key with the requested output type
+            match ks.store(derived_type, &derived[..out_len]) {
+                None => err!(Rsp::ErrCrypto),
+                Some(h) => {
+                    out.extend_from_slice(&h.0.to_le_bytes()).ok();
+                    return (Rsp::KeyHandle, out);
                 }
             }
         }
@@ -563,6 +569,28 @@ fn dispatch(
                     out.extend_from_slice(&handle.0.to_le_bytes()).ok();
                     info!("KeyImport: type={} handle={}", payload[0], handle.0);
                     return (Rsp::KeyHandle, out);
+                }
+            }
+        }
+
+        // ── ECDH key agreement ──────────────────────────────────────────────
+        Cmd::Ecdh => {
+            // Payload: [handle:4][peer_pub:65] (0x04 || X:32 || Y:32)
+            if payload.len() < 4 + 65 { err!(Rsp::ErrBadParam); }
+            let handle = KeyHandle(u32::from_le_bytes([
+                payload[0], payload[1], payload[2], payload[3],
+            ]));
+            let peer_pub = &payload[4..4 + 65];
+            match ks.borrow(handle, KeyType::EccP256) {
+                None => err!(Rsp::ErrBadKey),
+                Some(key) => {
+                    match crypto::ecdh(key, peer_pub) {
+                        Err(_) => err!(Rsp::ErrCrypto),
+                        Ok(shared) => {
+                            out.extend_from_slice(&shared).ok();
+                            return (Rsp::EcdhSecret, out);
+                        }
+                    }
                 }
             }
         }

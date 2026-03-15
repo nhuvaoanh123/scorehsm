@@ -21,6 +21,7 @@ use std::time::Duration;
 use crate::{
     backend::HsmBackend,
     error::{HsmError, HsmResult},
+    safety::crc32_mpeg2,
     types::{AesGcmParams, EcdsaSignature, KeyHandle, KeyType},
 };
 
@@ -47,6 +48,9 @@ enum Cmd {
     KeyGenerate = 0x09,
     KeyDelete = 0x0A,
     KeyDerive = 0x0B,
+    KeyImport = 0x0C,
+    Capability = 0x0D,
+    Ecdh = 0x0E,
 }
 
 #[repr(u8)]
@@ -61,6 +65,8 @@ enum Rsp {
     EcdsaSig = 0x86,
     EcdsaValid = 0x87,
     KeyHandle = 0x88,
+    EcdhSecret = 0x89,
+    Capability = 0x8A,
     ErrUnknownCmd = 0xF0,
     ErrBadFrame = 0xF1,
     ErrBadKey = 0xF2,
@@ -83,6 +89,8 @@ impl TryFrom<u8> for Rsp {
             0x86 => Ok(Rsp::EcdsaSig),
             0x87 => Ok(Rsp::EcdsaValid),
             0x88 => Ok(Rsp::KeyHandle),
+            0x89 => Ok(Rsp::EcdhSecret),
+            0x8A => Ok(Rsp::Capability),
             0xF0 => Ok(Rsp::ErrUnknownCmd),
             0xF1 => Ok(Rsp::ErrBadFrame),
             0xF2 => Ok(Rsp::ErrBadKey),
@@ -95,35 +103,7 @@ impl TryFrom<u8> for Rsp {
     }
 }
 
-// ── CRC-32/MPEG-2 (TSR-TIG-01, HSM-REQ-050) ──────────────────────────────────
-//
-// Parameters: poly=0x04C11DB7, init=0xFFFFFFFF, RefIn=false, RefOut=false,
-// XorOut=0x00000000.  KAT: crc32_mpeg2(&[0x00;4]) == 0x2144_DF1C.
-
-fn crc32_mpeg2(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xFFFF_FFFF;
-    for &b in data {
-        crc ^= (b as u32) << 24;
-        for _ in 0..8 {
-            if crc & 0x8000_0000 != 0 {
-                crc = (crc << 1) ^ 0x04C1_1DB7;
-            } else {
-                crc <<= 1;
-            }
-        }
-    }
-    crc
-}
-
-#[cfg(test)]
-mod crc_kat {
-    use super::crc32_mpeg2;
-    /// KAT from TSR-TIG-01 / QT-FSR-08-a: CRC-32/MPEG-2 of four zero bytes.
-    #[test]
-    fn crc32_mpeg2_known_answer() {
-        assert_eq!(crc32_mpeg2(&[0x00; 4]), 0x2144_DF1C);
-    }
-}
+// CRC-32/MPEG-2: imported from crate::safety (single source of truth, TSR-TIG-01).
 
 // ── Inner state protected by Mutex ───────────────────────────────────────────
 
@@ -435,8 +415,22 @@ impl HsmBackend for HardwareBackend {
         Ok(())
     }
 
-    fn key_import(&mut self, _key_type: KeyType, _wrapped: &[u8]) -> HsmResult<KeyHandle> {
-        Err(HsmError::Unsupported)
+    fn key_import(&mut self, key_type: KeyType, raw: &[u8]) -> HsmResult<KeyHandle> {
+        let kt_byte: u8 = match key_type {
+            KeyType::Aes256 => 0x01,
+            KeyType::HmacSha256 => 0x02,
+            KeyType::EccP256 => 0x03,
+        };
+        let mut payload = vec![kt_byte];
+        payload.extend_from_slice(&(raw.len() as u16).to_le_bytes());
+        payload.extend_from_slice(raw);
+        let (_, data) = self.lock()?.send_recv(Cmd::KeyImport, &payload)?;
+        if data.len() < 4 {
+            return Err(HsmError::UsbError("bad key import response".into()));
+        }
+        Ok(KeyHandle(u32::from_le_bytes([
+            data[0], data[1], data[2], data[3],
+        ])))
     }
 
     fn key_derive(
@@ -466,8 +460,18 @@ impl HsmBackend for HardwareBackend {
         ])))
     }
 
-    fn ecdh_agree(&self, _handle: KeyHandle, _peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]> {
-        // ECDH veneer not yet wired in dispatcher — planned for TZ integration
-        Err(HsmError::Unsupported)
+    fn ecdh_agree(&self, handle: KeyHandle, peer_pub: &[u8; 64]) -> HsmResult<[u8; 32]> {
+        // Frame: [handle:4][0x04||peer_x:32||peer_y:32] = 69 bytes
+        let mut payload = Vec::with_capacity(69);
+        payload.extend_from_slice(&handle.0.to_le_bytes());
+        payload.push(0x04); // SEC1 uncompressed prefix
+        payload.extend_from_slice(peer_pub);
+        let (_, data) = self.lock()?.send_recv(Cmd::Ecdh, &payload)?;
+        if data.len() < 32 {
+            return Err(HsmError::UsbError("bad ecdh response length".into()));
+        }
+        let mut shared = [0u8; 32];
+        shared.copy_from_slice(&data[..32]);
+        Ok(shared)
     }
 }

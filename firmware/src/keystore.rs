@@ -160,15 +160,6 @@ impl KeyStore {
         Some(&slot.bytes[..slot.len])
     }
 
-    /// Borrow mutable (needed for p256 signing which takes &mut impl Rng).
-    pub fn borrow_mut(&mut self, h: KeyHandle, expected_type: KeyType) -> Option<&mut [u8]> {
-        let idx = self.find_slot(h)?;
-        let slot = &mut self.slots[idx];
-        if slot.key_type != expected_type { return None; }
-        let len = slot.len;
-        Some(&mut slot.bytes[..len])
-    }
-
     /// Delete a key — zeroizes the slot.
     pub fn delete(&mut self, h: KeyHandle) -> bool {
         match self.find_slot(h) {

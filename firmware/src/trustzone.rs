@@ -132,6 +132,7 @@ pub mod nsc {
     }
 
     /// NSC veneer: symmetric encrypt (key never leaves S world).
+    // TODO(UC-01): implement when TZ wiring is complete
     #[no_mangle]
     #[cfg_attr(target_arch = "arm", link_section = ".gnu.sgstubs")]
     pub extern "C" fn nsc_aes_gcm_encrypt(

@@ -29,6 +29,7 @@ pub const FRAME_OVERHEAD: usize = 13;
 
 /// Maximum retry attempts per send_recv call.
 const MAX_RETRIES: u32 = 3;
+const _: () = assert!(MAX_RETRIES > 0);
 /// Base backoff delay in milliseconds (doubles per retry).
 const BASE_BACKOFF_MS: u64 = 10;
 /// Consecutive failures before entering safe state.
@@ -63,8 +64,12 @@ pub enum Cmd {
     KeyDelete = 0x0A,
     /// Derive key (HKDF).
     KeyDerive = 0x0B,
+    /// Import key material.
+    KeyImport = 0x0C,
     /// Query firmware capabilities (startup handshake).
-    Capability = 0x0C,
+    Capability = 0x0D,
+    /// ECDH key agreement.
+    Ecdh = 0x0E,
 }
 
 /// HSM response opcodes (firmware → host).
@@ -89,8 +94,10 @@ pub enum Rsp {
     EcdsaValid = 0x87,
     /// Key handle (4 bytes LE).
     KeyHandle = 0x88,
+    /// ECDH shared secret (32 bytes).
+    EcdhSecret = 0x89,
     /// Capability response (version + bitmask).
-    Capability = 0x89,
+    Capability = 0x8A,
     /// Error: unknown command.
     ErrUnknownCmd = 0xF0,
     /// Error: bad frame (CRC/magic/seq).
@@ -120,7 +127,8 @@ impl TryFrom<u8> for Rsp {
             0x86 => Ok(Rsp::EcdsaSig),
             0x87 => Ok(Rsp::EcdsaValid),
             0x88 => Ok(Rsp::KeyHandle),
-            0x89 => Ok(Rsp::Capability),
+            0x89 => Ok(Rsp::EcdhSecret),
+            0x8A => Ok(Rsp::Capability),
             0xF0 => Ok(Rsp::ErrUnknownCmd),
             0xF1 => Ok(Rsp::ErrBadFrame),
             0xF2 => Ok(Rsp::ErrBadKey),
@@ -301,6 +309,7 @@ impl Transport {
                 }
             }
         }
+        // SAFETY: loop always returns — MAX_RETRIES > 0 guaranteed by const assertion
         unreachable!()
     }
 
