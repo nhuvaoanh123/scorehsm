@@ -8,11 +8,9 @@
 use sha2::{Digest, Sha256};
 use hmac::{Hmac, Mac};
 use hkdf::Hkdf;
-use aes_gcm::{Aes256Gcm, Key as AesKey, Nonce, aead::{Aead, KeyInit, Payload}};
+use aes_gcm::{Aes256Gcm, Key as AesKey, Nonce, aead::{AeadInPlace, KeyInit}};
 use p256::{
-    ecdsa::{SigningKey, VerifyingKey, signature::{Signer, Verifier}},
-    ecdh::EphemeralSecret,
-    EncodedPoint,
+    ecdsa::{SigningKey, VerifyingKey},
     PublicKey,
 };
 use rand_core::{RngCore, CryptoRng};
@@ -44,10 +42,15 @@ pub fn aes_gcm_encrypt(
     let aes_key = AesKey::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(aes_key);
     let nonce = Nonce::from_slice(iv);
-    let payload = Payload { msg: plaintext, aad };
-    let ciphertext = cipher.encrypt(nonce, payload).map_err(|_| ())?;
+    let pt_len = plaintext.len();
+    if pt_len > 512 { return Err(()); }
+    let mut buf = [0u8; 512];
+    buf[..pt_len].copy_from_slice(plaintext);
+    let tag = cipher.encrypt_in_place_detached(nonce, aad, &mut buf[..pt_len])
+        .map_err(|_| ())?;
     let mut out = heapless::Vec::new();
-    out.extend_from_slice(&ciphertext).map_err(|_| ())?;
+    out.extend_from_slice(&buf[..pt_len]).map_err(|_| ())?;
+    out.extend_from_slice(tag.as_slice()).map_err(|_| ())?;
     Ok(out)
 }
 
@@ -58,13 +61,19 @@ pub fn aes_gcm_decrypt(
     aad: &[u8],
     ciphertext: &[u8],
 ) -> Result<heapless::Vec<u8, 624>, ()> {
+    if ciphertext.len() < 16 { return Err(()); }
     let aes_key = AesKey::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(aes_key);
     let nonce = Nonce::from_slice(iv);
-    let payload = Payload { msg: ciphertext, aad };
-    let plaintext = cipher.decrypt(nonce, payload).map_err(|_| ())?;
+    let ct_len = ciphertext.len() - 16;
+    if ct_len > 512 { return Err(()); }
+    let tag = aes_gcm::aead::generic_array::GenericArray::from_slice(&ciphertext[ct_len..]);
+    let mut buf = [0u8; 512];
+    buf[..ct_len].copy_from_slice(&ciphertext[..ct_len]);
+    cipher.decrypt_in_place_detached(nonce, aad, &mut buf[..ct_len], tag)
+        .map_err(|_| ())?;
     let mut out = heapless::Vec::new();
-    out.extend_from_slice(&plaintext).map_err(|_| ())?;
+    out.extend_from_slice(&buf[..ct_len]).map_err(|_| ())?;
     Ok(out)
 }
 
@@ -110,8 +119,8 @@ pub fn ecdsa_verify(
     let sk = SigningKey::from_bytes(private_key.into()).map_err(|_| ())?;
     let vk = VerifyingKey::from(&sk);
     let sig = p256::ecdsa::Signature::from_scalars(
-        p256::FieldBytes::from_slice(r),
-        p256::FieldBytes::from_slice(s),
+        *p256::FieldBytes::from_slice(r),
+        *p256::FieldBytes::from_slice(s),
     ).map_err(|_| ())?;
     Ok(vk.verify_prehash(digest, &sig).is_ok())
 }

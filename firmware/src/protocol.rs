@@ -106,7 +106,7 @@ pub struct Frame<'a> {
     pub payload: &'a [u8],
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, defmt::Format)]
 pub enum ParseError {
     TooShort,
     BadMagic,

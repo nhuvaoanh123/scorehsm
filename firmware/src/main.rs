@@ -15,20 +15,19 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::{
     bind_interrupts,
+    gpio::{Level, Output, Speed},
     peripherals,
     rng::{self, Rng},
-    usb_otg::{self, Driver as UsbDriver, Instance},
+    usb::Driver as UsbDriver,
     wdg::IndependentWatchdog,
 };
 use embassy_usb::{
     class::cdc_acm::{CdcAcmClass, State},
     Builder, UsbDevice,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_futures::join::join3;
 use embassy_time::Timer;
-use heapless::Vec;
-use rand_core::RngCore;
+use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 mod crypto;
@@ -37,12 +36,12 @@ mod protocol;
 mod trustzone;
 
 use keystore::{KeyStore, KeyHandle, KeyType};
-use protocol::{Cmd, Rsp, Frame, ParseError, FRAME_OVERHEAD, MAX_FRAME, MAX_PAYLOAD};
+use protocol::{Cmd, Rsp, ParseError, FRAME_OVERHEAD, MAX_FRAME, MAX_PAYLOAD};
 
 // ── Embassy interrupt bindings ────────────────────────────────────────────────
 
 bind_interrupts!(struct Irqs {
-    OTG_FS => usb_otg::InterruptHandler<peripherals::USB_OTG_FS>;
+    USB_FS => embassy_stm32::usb::InterruptHandler<peripherals::USB>;
     RNG    => rng::InterruptHandler<peripherals::RNG>;
 });
 
@@ -50,50 +49,53 @@ bind_interrupts!(struct Irqs {
 
 static mut KEY_STORE: KeyStore = KeyStore::new();
 
-// ── RNG wrapper (Embassy hardware RNG) ───────────────────────────────────────
-
-struct HwRng<'d>(Rng<'d, peripherals::RNG>);
-
-impl RngCore for HwRng<'_> {
-    fn next_u32(&mut self) -> u32 {
-        let mut buf = [0u8; 4];
-        self.0.fill_bytes(&mut buf);
-        u32::from_le_bytes(buf)
-    }
-    fn next_u64(&mut self) -> u64 {
-        let mut buf = [0u8; 8];
-        self.0.fill_bytes(&mut buf);
-        u64::from_le_bytes(buf)
-    }
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.0.fill_bytes(dest);
-    }
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.0.fill_bytes(dest);
-        Ok(())
-    }
-}
-
-impl rand_core::CryptoRng for HwRng<'_> {}
-
 // ── USB buffer allocations ────────────────────────────────────────────────────
-
-const USB_EP_BUF_SIZE: usize = 256;
 
 // ── Main entry ────────────────────────────────────────────────────────────────
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    let p = embassy_stm32::init(Default::default());
+async fn main(_spawner: Spawner) {
+    // ── RCC config: 80 MHz system + HSI48 for USB (per Embassy L5 example) ──
+    let mut config = embassy_stm32::Config::default();
+    {
+        use embassy_stm32::rcc::*;
+        config.rcc.hsi = true;
+        config.rcc.sys = Sysclk::PLL1_R;
+        config.rcc.pll = Some(Pll {
+            source: PllSource::HSI,      // 16 MHz HSI
+            prediv: PllPreDiv::DIV1,
+            mul: PllMul::MUL10,          // 16 * 10 = 160 MHz VCO
+            divp: None,
+            divq: None,
+            divr: Some(PllRDiv::DIV2),   // 160 / 2 = 80 MHz system clock
+        });
+        config.rcc.hsi48 = Some(Hsi48Config { sync_from_usb: true });
+        config.rcc.mux.clk48sel = mux::Clk48sel::HSI48;
+    }
+    let p = embassy_stm32::init(config);
 
-    info!("scorehsm-firmware booting");
+    // NUCLEO-L552ZE-Q (Nucleo-144): LED1=PC7(green), LED2=PB7(blue), LED3=PA9(red)
+    let mut led = Output::new(p.PC7, Level::High, Speed::Low);
+    info!("scorehsm-firmware: phase A OK — Embassy init complete");
+
+    // Blink 3× fast to confirm we're alive
+    for _ in 0..3 {
+        led.set_low();
+        cortex_m::asm::delay(20_000_000); // ~250 ms at 80 MHz
+        led.set_high();
+        cortex_m::asm::delay(20_000_000);
+    }
+
+    // STM32L5: USB transceiver requires VDDUSB supply valid (PWR_CR2.USV)
+    {
+        let pwr = embassy_stm32::pac::PWR;
+        pwr.cr2().modify(|w| w.set_usv(true));
+        info!("PWR_CR2.USV set — USB supply valid");
+    }
 
     // ── TrustZone: SAU configuration (before any peripheral init) ────────
     #[cfg(feature = "trustzone")]
     {
-        // SAFETY: called once at boot, interrupts disabled (cortex-m-rt guarantee),
-        // Secure Privileged mode. SAU regions mark SRAM1+NS-flash as Non-Secure;
-        // SRAM2 (key store) remains Secure and hardware-isolated.
         unsafe { trustzone::configure_sau(); }
         if trustzone::verify_tz_active() {
             info!("TrustZone: SAU active, SRAM2 Secure");
@@ -107,51 +109,42 @@ async fn main(spawner: Spawner) {
     }
 
     // Initialise hardware RNG
-    let rng = Rng::new(p.RNG, Irqs);
+    let mut rng = Rng::new(p.RNG, Irqs);
 
-    // USB OTG FS
-    let mut ep_out_buffer = [0u8; USB_EP_BUF_SIZE];
-    let mut config = usb_otg::Config::default();
-    config.vbus_detection = true;
-    let driver = UsbDriver::new_fs(
-        p.USB_OTG_FS, Irqs, p.PA12, p.PA11,
-        &mut ep_out_buffer, config,
-    );
+    // USB FS device
+    let driver = UsbDriver::new(p.USB, Irqs, p.PA12, p.PA11);
 
     // Build USB device with CDC-ACM
-    let mut usb_config = embassy_usb::Config::new(0xF055, 0x4853); // "VID=F0SS" "PID=HSM"
+    let mut usb_config = embassy_usb::Config::new(0xF055, 0x4853);
     usb_config.manufacturer = Some("Taktflow-Systems");
     usb_config.product      = Some("scoreHSM");
     usb_config.serial_number = Some("0001");
-    usb_config.max_power      = 100; // mA
+    usb_config.max_power      = 100;
     usb_config.max_packet_size_0 = 64;
 
-    let mut device_descriptor = [0u8; 256];
-    let mut config_descriptor  = [0u8; 256];
-    let mut bos_descriptor     = [0u8; 256];
-    let mut msos_descriptor    = [0u8; 256];
-    let mut control_buf        = [0u8; 64];
-    let mut state = State::new();
+    static DESC_DEVICE: StaticCell<[u8; 256]> = StaticCell::new();
+    static DESC_CONFIG: StaticCell<[u8; 256]> = StaticCell::new();
+    static DESC_BOS: StaticCell<[u8; 256]> = StaticCell::new();
+    static BUF_CONTROL: StaticCell<[u8; 64]> = StaticCell::new();
+    static CDC_STATE: StaticCell<State<'static>> = StaticCell::new();
 
     let mut builder = Builder::new(
         driver,
         usb_config,
-        &mut device_descriptor,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut msos_descriptor,
-        &mut control_buf,
+        DESC_DEVICE.init([0; 256]),
+        DESC_CONFIG.init([0; 256]),
+        DESC_BOS.init([0; 256]),
+        BUF_CONTROL.init([0; 64]),
     );
 
-    let class = CdcAcmClass::new(&mut builder, &mut state, 64);
+    let class = CdcAcmClass::new(&mut builder, CDC_STATE.init(State::new()), 64);
     let usb = builder.build();
+    info!("USB CDC built — starting tasks");
 
     // IWDG: 2s timeout, pet every 500ms from watchdog task
     let mut wdg = IndependentWatchdog::new(p.IWDG, 2_000_000);
     wdg.unleash();
     info!("IWDG active (2s timeout, 500ms pet)");
-
-    info!("USB CDC ready");
 
     join3(usb_run(usb), hsm_run(class, rng), watchdog_run(wdg)).await;
 }
@@ -211,7 +204,7 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
                     let rsp_code = match e {
                         ParseError::BadMagic | ParseError::BadCrc | ParseError::BadLength => Rsp::ErrBadFrame,
                         ParseError::UnknownCmd => Rsp::ErrUnknownCmd,
-                        ParseError::TooShort => unreachable!(),
+                        ParseError::TooShort => core::unreachable!(),
                     };
                     let n = protocol::build_response(rsp_code, 0x00, &[], &mut tx_buf)
                         .unwrap_or(0);
@@ -262,8 +255,14 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
 
                     let n = protocol::build_response(rsp, seq, &rsp_payload, &mut tx_buf)
                         .unwrap_or(0);
-                    if let Err(_) = class.write_packet(&tx_buf[..n]).await {
-                        break 'connection;
+                    // Send response in 64-byte USB packets (CDC max packet size)
+                    let mut sent = 0;
+                    while sent < n {
+                        let chunk = (n - sent).min(64);
+                        if let Err(_) = class.write_packet(&tx_buf[sent..sent + chunk]).await {
+                            break 'connection;
+                        }
+                        sent += chunk;
                     }
 
                     if expected_seq == u32::MAX {
@@ -464,25 +463,21 @@ fn dispatch(
                 Ok(t) => t,
                 Err(_) => err!(Rsp::ErrBadParam),
             };
-            let mut hw_rng = HwRng(unsafe {
-                // SAFETY: single call site, non-reentrant
-                core::ptr::read(rng as *const Rng<'_, _>)
-            });
             let raw_key: heapless::Vec<u8, 32> = match kt {
                 KeyType::Aes256 => {
-                    let k = crypto::gen_aes256_key(&mut hw_rng);
+                    let k = crypto::gen_aes256_key(rng);
                     let mut v = heapless::Vec::new();
                     v.extend_from_slice(&k).ok();
                     v
                 }
                 KeyType::HmacSha256 => {
-                    let k = crypto::gen_hmac_key(&mut hw_rng);
+                    let k = crypto::gen_hmac_key(rng);
                     let mut v = heapless::Vec::new();
                     v.extend_from_slice(&k).ok();
                     v
                 }
                 KeyType::EccP256 => {
-                    let k = crypto::gen_ecc_p256_key(&mut hw_rng);
+                    let k = crypto::gen_ecc_p256_key(rng);
                     let mut v = heapless::Vec::new();
                     v.extend_from_slice(&k).ok();
                     v

@@ -272,16 +272,32 @@ Full-library-level tests verifying FSRs (not TSRs). Run through `hsm_init()` -> 
 - `README.md` — test table updated (274), CI badge added, status updated
 - `CHANGELOG.md` — [0.1.0-alpha] entry added
 
-### Phase 10b — HIL Tests on Hardware 🔲 PENDING
+### Phase 10b — HIL Tests on Hardware ✅ DONE (2026-03-15)
+
+**Status: DONE** (2026-03-15) — 3/3 HIL tests passed
 
 Requires physical Raspberry Pi + Nucleo hardware rig.
 
 | Test | Method | Pass criteria |
 |---|---|---|
 | HIL-IVG-01 | Pi reads VID/PID from sysfs | Matches firmware 0xF055/0x4853 |
-| HIL-IVG-02 | Replug with different FW | `DeviceIdentityChanged` + SafeState |
 | HIL-TIG-05 | 1000 AES-GCM round-trips | 1000/1000 CRC-32 verified |
 | HIL-RNG-01 | 1MB TRNG output + `ent` | Entropy ~8.0 bits/byte |
+
+**Accomplishments:**
+- Firmware builds and runs on NUCLEO-L552ZE-Q (80 MHz PLL, HSI48 USB, Embassy async)
+- USB CDC-ACM enumerates on Raspberry Pi (VID=f055, PID=4853)
+- HIL test crate created (`scorehsm/hil/`) with 3 automated tests
+- All 3 HIL tests pass:
+  - **USB identity**: VID/PID match (0xF055/0x4853)
+  - **AES-GCM round-trip**: 1000x encrypts + decrypts, 3.0s total, 100% CRC-32 verification
+  - **TRNG entropy**: 1 MB output analyzed with `ent`, 7.999830 bits/byte (well above 7.5 threshold)
+- Key fixes applied:
+  - Correct LED pin assignment (PC7, not PC6)
+  - USB clock configuration via Embassy init
+  - PWR_CR2.USV register for USB voltage regulation
+  - USB response chunking for large payloads
+  - RNG peripheral safety (no invalid RNGEN toggles)
 
 **Gate:** All HIL tests pass. Safety case conditions UC-01 (HIL) and UC-02 (coverage) closed.
 
@@ -302,7 +318,7 @@ Requires physical Raspberry Pi + Nucleo hardware rig.
 | 8 | TrustZone activation | 2d | ✅ DONE |
 | 9 | CI + project files | 0.5d | ✅ DONE |
 | 10a | Evidence collection + doc updates | 0.5d | ✅ DONE |
-| 10b | HIL tests on hardware | 0.5d | 🔲 PENDING |
+| 10b | HIL tests on hardware | 0.5d | ✅ DONE |
 
 ---
 

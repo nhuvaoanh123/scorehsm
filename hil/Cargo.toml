@@ -1,0 +1,13 @@
+[package]
+name = "scorehsm-hil"
+version = "0.1.0"
+edition = "2021"
+description = "Hardware-in-the-loop tests for scoreHSM — runs on Raspberry Pi against physical Nucleo"
+license = "Apache-2.0"
+
+[[bin]]
+name = "scorehsm-hil"
+path = "src/main.rs"
+
+[dependencies]
+scorehsm-host = { path = "../host", features = ["hw-backend"] }
