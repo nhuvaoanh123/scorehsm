@@ -176,8 +176,8 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
     let mut rx_buf = [0u8; MAX_FRAME];
     let mut tx_buf = [0u8; MAX_FRAME];
     let mut rx_pos: usize = 0;
-    let mut initialized = false;
-    let mut expected_seq: u32 = 0x00;
+    let mut initialized;
+    let mut expected_seq: u32;
 
     loop {
         // Wait for DTR (host connected)
@@ -298,7 +298,7 @@ fn dispatch(
     }
 
     // SAFETY: single-threaded, no re-entrant access to KEY_STORE
-    let ks = unsafe { &mut KEY_STORE };
+    let ks = unsafe { &mut *(&raw mut KEY_STORE) };
 
     match cmd {
         // ── Init ─────────────────────────────────────────────────────────────
