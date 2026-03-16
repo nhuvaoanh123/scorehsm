@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! TrustZone SAU configuration for STM32L552.
 //!
 //! The STM32L552 supports ARMv8-M TrustZone via the Security Attribution Unit

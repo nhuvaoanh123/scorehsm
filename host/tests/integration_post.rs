@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! POST/KAT integration tests — HSM-REQ-074/075.
 //!
 //! Verifies that the power-on self-test KAT vectors pass and that

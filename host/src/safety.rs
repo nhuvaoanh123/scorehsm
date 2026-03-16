@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Safety services layer — ISO 26262-6 §8 software safety mechanisms.
 //!
 //! | Component              | TSR        | Purpose                                     |

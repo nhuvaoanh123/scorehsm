@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Hardware backend — USB CDC transport to STM32L552 Nucleo HSM.
 //!
 //! Implements `HsmBackend` by serialising each operation into a binary frame,

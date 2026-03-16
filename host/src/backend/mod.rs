@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Backend abstraction — software fallback and hardware (USB/L55).
 
 use crate::error::HsmResult;

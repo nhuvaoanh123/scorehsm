@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Transport layer integration tests — TSR-TIG-01..04.
 //!
 //! Tests frame integrity (CRC-32), sequence numbering, per-op timeouts,

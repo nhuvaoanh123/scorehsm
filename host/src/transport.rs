@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Transport layer — frame-level USB CDC communication with safety mechanisms.
 //!
 //! Provides [`Transport`] which handles:

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Criterion benchmarks for scorehsm software backend.
 //!
 //! Measures latency distributions for security-sensitive crypto operations:

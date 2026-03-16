@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! HsmSession access-control tests — HSM-REQ-037/038/039.
 //!
 //! These tests use the SoftwareBackend but exercise the session layer:

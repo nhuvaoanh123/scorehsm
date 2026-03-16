@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Statistical constant-time verification for AES-GCM tag comparison.
 //!
 //! The constant-time property we verify: the tag COMPARISON in `aes-gcm`

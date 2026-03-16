@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Session management integration tests — TSR-SMG-01/02/03.
 //!
 //! Tests HsmSession ownership model, IDS event emission, handle lifecycle,

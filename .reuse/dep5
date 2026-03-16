@@ -1,0 +1,23 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: scorehsm
+Upstream-Contact: https://github.com/nhuvaoanh123/scorehsm
+
+Files: *.toml *.lock *.md *.json *.yml *.yaml .gitignore clippy.toml rustfmt.toml deny.toml
+Copyright: 2026 Taktflow Systems
+License: Apache-2.0
+
+Files: firmware/rust-toolchain.toml
+Copyright: 2026 Taktflow Systems
+License: Apache-2.0
+
+Files: LICENSES/*
+Copyright: 2026 Taktflow Systems
+License: Apache-2.0
+
+Files: .github/**
+Copyright: 2026 Taktflow Systems
+License: Apache-2.0
+
+Files: docs/**
+Copyright: 2026 Taktflow Systems
+License: Apache-2.0

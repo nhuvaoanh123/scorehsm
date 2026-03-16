@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Secure firmware update verification — HSM-REQ-047.
 //!
 //! Verifies that a firmware update image carries a valid ECDSA-P256 signature

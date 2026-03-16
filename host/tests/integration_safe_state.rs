@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Safe state integration tests — TSR-SSG-01/02.
 //!
 //! Tests library state machine, safe-state blocking, recovery via reinit,

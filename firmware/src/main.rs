@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! scorehsm-firmware — HSM firmware for STM32L552 Nucleo
 //!
 //! Architecture: Embassy async, USB CDC, rustcrypto software backend.

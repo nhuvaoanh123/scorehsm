@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Shared types used across the scorehsm-host API.
 
 /// Opaque key handle. Value 0 is reserved/invalid.

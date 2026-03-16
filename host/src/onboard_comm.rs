@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! IPSec / MACSec key material provisioning — HSM-REQ-048.
 //!
 //! The HSM provides the ECDH and HKDF primitives required by IKEv2 (IPSec) and

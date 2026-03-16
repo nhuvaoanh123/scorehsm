@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Key store — secure SRAM2 key material management.
 //!
 //! Key material is stored in SRAM2 (security-attributed when TrustZone is

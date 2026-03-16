@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Secure feature activation — HSM-REQ-049.
 //!
 //! Features are enabled by presenting a signed activation token. The token

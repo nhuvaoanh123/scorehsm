@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! USB frame protocol — matches the host-side framing in `scorehsm-host`.
 //!
 //! Frame format (§2.1 of architecture.md):

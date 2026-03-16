@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! IDS (Intrusion Detection System) hook — HSM-REQ-038.
 //!
 //! Consumers implement `IdsHook` and attach it to an `HsmSession`. Every

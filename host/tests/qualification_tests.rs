@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Qualification Test Suite — ISO 26262-6 §11.
 //!
 //! 57 tests verifying all 16 Functional Safety Requirements (FSR-01..16)

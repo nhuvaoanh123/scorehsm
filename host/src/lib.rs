@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! scorehsm-host — HSM host library
 //!
 //! Provides a unified crypto API with two backends:

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Secure feature activation tests — HSM-REQ-049.
 
 use scorehsm_host::{

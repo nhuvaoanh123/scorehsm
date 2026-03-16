@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Nonce manager integration tests — TSR-NMG-01/02.
 //!
 //! Verifies monotonic nonce counting, HKDF-SHA256 IV derivation,

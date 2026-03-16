@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Secure firmware update tests — HSM-REQ-047.
 
 use scorehsm_host::{

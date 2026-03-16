@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! IPSec / MACSec key derivation tests — HSM-REQ-048.
 
 use scorehsm_host::{

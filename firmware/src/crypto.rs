@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Crypto operations — all soft-crypto, no hardware acceleration for now.
 //!
 //! Hardware peripherals (AES, PKA, HASH, RNG) are at Secure addresses on

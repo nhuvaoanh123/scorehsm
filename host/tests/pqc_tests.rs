@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Post-quantum cryptography tests — HSM-REQ-033.
 //!
 //! Tests ML-DSA (Dilithium-3) and ML-KEM (Kyber-768) software implementations.

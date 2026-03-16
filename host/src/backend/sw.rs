@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Software fallback backend — rustcrypto, no hardware required.
 //!
 //! Used in CI and on any Linux machine without the L55 attached.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Software backend tests — TDD, all tests written before implementation.
 //!
 //! Requirement traceability:

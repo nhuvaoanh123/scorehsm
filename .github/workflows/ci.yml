@@ -14,12 +14,12 @@ jobs:
   # ── Host library: test + clippy + fmt ────────────────────────────────────
   host-test:
     name: Test (host)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.87.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "host"
@@ -42,12 +42,12 @@ jobs:
 
   host-clippy:
     name: Clippy (host)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.87.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -58,37 +58,56 @@ jobs:
 
   host-fmt:
     name: Format (host)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.87.0
         with:
           components: rustfmt
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  # ── Dependency audit ─────────────────────────────────────────────────────
-  audit:
-    name: Audit (dependencies)
-    runs-on: ubuntu-latest
-    needs: host-test
+  # ── Dependency policy (replaces cargo-audit) ────────────────────────────
+  deny:
+    name: Deny (licenses + advisories + bans)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-      - name: Run cargo audit
-        run: cargo audit
+      - uses: EmbarkStudios/cargo-deny-action@v1
+
+  # ── License / SPDX compliance ──────────────────────────────────────────
+  reuse:
+    name: REUSE compliance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: REUSE lint
+        uses: fsfe/reuse-action@v4
+
+  # ── Security scanning ──────────────────────────────────────────────────
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: actions
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
 
   # ── Coverage ─────────────────────────────────────────────────────────────
   coverage:
     name: Coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.87.0
         with:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
@@ -111,7 +130,7 @@ jobs:
   # real hardware during Phase 10 (HIL bringup). Host library CI is the gate.
   firmware-check:
     name: Check (firmware)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly

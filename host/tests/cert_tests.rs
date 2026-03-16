@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! X.509 certificate management tests — HSM-REQ-018.
 //!
 //! Uses `rcgen` to generate deterministic test certificates so no external

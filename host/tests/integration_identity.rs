@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! Identity and boot status integration tests — TSR-IVG-01, CG-01.
 //!
 //! Tests device identity verification (BootStatus), and certificate

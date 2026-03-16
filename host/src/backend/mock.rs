@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+
 //! MockHardwareBackend — simulated L55 HSM for CI testing of SSRs.
 //!
 //! Implements [`HsmBackend`] without physical hardware. Provides configurable
