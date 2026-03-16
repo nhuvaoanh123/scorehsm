@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: 2026 Taktflow Systems
+//
+// Dev Container — guarantees every contributor uses the same toolchain.
+// Matches CI (ubuntu-24.04, Rust 1.87.0) exactly.
+//
+// Usage: VS Code → "Reopen in Container" / GitHub Codespaces / JetBrains
+{
+  "name": "scorehsm",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb"
+      ],
+      "settings": {
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.check.extraArgs": ["--features", "mock,certs"],
+        "editor.formatOnSave": true,
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "cargo fetch && echo 'Ready — run: cargo test --workspace'",
+  "remoteUser": "vscode"
+}
