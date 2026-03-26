@@ -12,7 +12,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
 
 use defmt::*;
 use embassy_executor::Spawner;
@@ -112,7 +111,7 @@ async fn main(_spawner: Spawner) {
     }
 
     // Initialise hardware RNG
-    let mut rng = Rng::new(p.RNG, Irqs);
+    let rng = Rng::new(p.RNG, Irqs);
 
     // USB FS device
     let driver = UsbDriver::new(p.USB, Irqs, p.PA12, p.PA11);
@@ -178,9 +177,9 @@ async fn hsm_run<'d, D: embassy_usb::driver::Driver<'d>>(
 ) -> ! {
     let mut rx_buf = [0u8; MAX_FRAME];
     let mut tx_buf = [0u8; MAX_FRAME];
-    let mut rx_pos: usize = 0;
-    let mut initialized = false;
-    let mut expected_seq: u32 = 0x00;
+    let mut rx_pos: usize;
+    let mut initialized;
+    let mut expected_seq: u32;
 
     loop {
         // Wait for DTR (host connected)
@@ -301,7 +300,7 @@ fn dispatch(
     }
 
     // SAFETY: single-threaded, no re-entrant access to KEY_STORE
-    let ks = unsafe { &mut KEY_STORE };
+    let ks = unsafe { &mut *(&raw mut KEY_STORE) };
 
     match cmd {
         // ── Init ─────────────────────────────────────────────────────────────

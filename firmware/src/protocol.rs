@@ -79,6 +79,7 @@ pub enum Rsp {
     ErrCrypto      = 0xF3,
     ErrNotInit     = 0xF4,
     ErrBadParam    = 0xF5,
+    #[allow(dead_code)] // reserved for future rate-limiting support
     ErrRateLimit   = 0xF6,
 }
 

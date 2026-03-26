@@ -99,8 +99,7 @@ fn main() {
 
 fn test_ivg_01() -> Result<String, String> {
     let usb_dir = "/sys/bus/usb/devices";
-    let entries =
-        fs::read_dir(usb_dir).map_err(|e| format!("cannot read {}: {}", usb_dir, e))?;
+    let entries = fs::read_dir(usb_dir).map_err(|e| format!("cannot read {}: {}", usb_dir, e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("readdir: {}", e))?;
@@ -109,8 +108,7 @@ fn test_ivg_01() -> Result<String, String> {
         let vid_path = path.join("idVendor");
         let pid_path = path.join("idProduct");
 
-        if let (Ok(vid), Ok(pid)) = (fs::read_to_string(&vid_path), fs::read_to_string(&pid_path))
-        {
+        if let (Ok(vid), Ok(pid)) = (fs::read_to_string(&vid_path), fs::read_to_string(&pid_path)) {
             let vid = vid.trim();
             let pid = pid.trim();
             if vid == "f055" && pid == "4853" {
@@ -152,10 +150,7 @@ fn test_tig_05(backend: &mut HardwareBackend) -> Result<String, String> {
         let mut iv = [0u8; 12];
         iv[..4].copy_from_slice(&i.to_le_bytes());
 
-        let params = AesGcmParams {
-            iv: &iv,
-            aad: &[],
-        };
+        let params = AesGcmParams { iv: &iv, aad: &[] };
 
         // Encrypt on hardware
         let (ct, tag) = backend
@@ -205,8 +200,7 @@ fn test_rng_01(backend: &mut HardwareBackend) -> Result<String, String> {
     const CHUNK: usize = 256;
 
     let tmp_path = "/tmp/scorehsm-trng.bin";
-    let mut file =
-        fs::File::create(tmp_path).map_err(|e| format!("create {}: {}", tmp_path, e))?;
+    let mut file = fs::File::create(tmp_path).map_err(|e| format!("create {}: {}", tmp_path, e))?;
 
     let start = Instant::now();
     let mut collected = 0usize;
@@ -217,8 +211,7 @@ fn test_rng_01(backend: &mut HardwareBackend) -> Result<String, String> {
         backend
             .random(&mut buf)
             .map_err(|e| format!("random at byte {}: {}", collected, e))?;
-        file.write_all(&buf)
-            .map_err(|e| format!("write: {}", e))?;
+        file.write_all(&buf).map_err(|e| format!("write: {}", e))?;
         collected += want;
     }
     drop(file);
