@@ -1,6 +1,6 @@
 # scorehsm
 
-[![CI](https://github.com/nhuvaoanh123/scorehsm/actions/workflows/ci.yml/badge.svg)](https://github.com/nhuvaoanh123/scorehsm/actions/workflows/ci.yml)
+[![CI](https://github.com/Taktflow-Systems/scorehsm/actions/workflows/ci.yml/badge.svg)](https://github.com/Taktflow-Systems/scorehsm/actions/workflows/ci.yml)
 
 Hardware-backed cryptographic module for Linux-based SDV platforms.
 

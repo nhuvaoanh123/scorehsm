@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: scorehsm
-Upstream-Contact: https://github.com/nhuvaoanh123/scorehsm
+Upstream-Contact: https://github.com/Taktflow-Systems/scorehsm
 
 Files: *.toml *.lock *.md *.json *.yml *.yaml .gitignore clippy.toml rustfmt.toml deny.toml
 Copyright: 2026 Taktflow Systems

@@ -4,7 +4,7 @@
 
 ```bash
 # Clone
-git clone https://github.com/nhuvaoanh123/scorehsm.git
+git clone https://github.com/Taktflow-Systems/scorehsm.git
 cd scorehsm
 
 # Run host tests (stable Rust)
